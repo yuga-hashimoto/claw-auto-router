@@ -1,6 +1,8 @@
-import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import { z } from 'zod'
+import { resolveUserPath } from '../utils/paths.js'
 
 /**
  * Optional local router.config.json file.
@@ -31,6 +33,14 @@ const ExtraProviderSchema = z.object({
 })
 
 const RoutingTierSchema = z.enum(['SIMPLE', 'STANDARD', 'COMPLEX', 'CODE'])
+
+const OpenClawIntegrationSchema = z.object({
+  providerId: z.string().default('claw-auto-router'),
+  modelId: z.string().default('auto'),
+  baseUrl: z.string().default('http://127.0.0.1:3000'),
+  upstreamPrimary: z.string().optional(),
+  upstreamFallbacks: z.array(z.string()).optional(),
+})
 
 const RouterConfigSchema = z.object({
   /**
@@ -71,18 +81,36 @@ const RouterConfigSchema = z.object({
       CODE: z.array(z.string()).optional(),
     })
     .optional(),
+
+  /**
+   * Metadata written by `claw-auto-router setup`.
+   *
+   * This lets OpenClaw point at the router while the router still remembers
+   * the original upstream primary/fallback chain and avoids routing to itself.
+   */
+  openClawIntegration: OpenClawIntegrationSchema.optional(),
 })
 
 export type RouterConfig = z.infer<typeof RouterConfigSchema>
 export type ExtraProvider = z.infer<typeof ExtraProviderSchema>
+export type OpenClawIntegration = z.infer<typeof OpenClawIntegrationSchema>
 
-export const DEFAULT_ROUTER_CONFIG_PATH = join(process.cwd(), 'router.config.json')
+export const DEFAULT_ROUTER_CONFIG_PATH = join(homedir(), '.openclaw', 'router.config.json')
 
-/** @internal alias kept for backwards compat */
-const DEFAULT_PATH = DEFAULT_ROUTER_CONFIG_PATH
+export function resolveRouterConfigPath(overridePath?: string, openClawConfigPath?: string): string {
+  if (overridePath !== undefined) {
+    return resolveUserPath(overridePath)
+  }
 
-export function loadRouterConfig(overridePath?: string): RouterConfig {
-  const path = overridePath ?? DEFAULT_PATH
+  if (openClawConfigPath !== undefined) {
+    return join(dirname(resolveUserPath(openClawConfigPath)), 'router.config.json')
+  }
+
+  return DEFAULT_ROUTER_CONFIG_PATH
+}
+
+export function loadRouterConfig(overridePath?: string, openClawConfigPath?: string): RouterConfig {
+  const path = resolveRouterConfigPath(overridePath, openClawConfigPath)
 
   if (!existsSync(path)) {
     return {}
@@ -114,4 +142,10 @@ export function loadRouterConfig(overridePath?: string): RouterConfig {
   }
 
   return result.data
+}
+
+export function saveRouterConfig(config: RouterConfig, overridePath?: string, openClawConfigPath?: string): void {
+  const path = resolveRouterConfigPath(overridePath, openClawConfigPath)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, JSON.stringify(config, null, 2) + '\n', 'utf-8')
 }

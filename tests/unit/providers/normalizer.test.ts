@@ -184,4 +184,36 @@ describe('normalizeConfig — auto-population', () => {
     expect(orModel).toBeDefined()
     expect(orModel?.baseUrl).toBe('https://openrouter.ai/api/v1')
   })
+
+  it('skips the self-provider configured by setup', () => {
+    const config: RawConfig = {
+      models: {
+        providers: {
+          'claw-auto-router': {
+            baseUrl: 'http://127.0.0.1:3000',
+            apiKey: 'local',
+            api: 'openai-completions',
+            models: [{ id: 'auto', name: 'Auto Router' }],
+          },
+          nvidia: {
+            baseUrl: 'https://integrate.api.nvidia.com/v1',
+            apiKey: 'nvapi-test',
+            api: 'openai-completions',
+            models: [{ id: 'qwen', name: 'Qwen' }],
+          },
+        },
+      },
+    }
+
+    const { models } = normalizeConfig(config, {
+      openClawIntegration: {
+        providerId: 'claw-auto-router',
+        modelId: 'auto',
+        baseUrl: 'http://127.0.0.1:3000',
+      },
+    })
+
+    expect(models.find((model) => model.id === 'claw-auto-router/auto')).toBeUndefined()
+    expect(models.find((model) => model.id === 'nvidia/qwen')).toBeDefined()
+  })
 })

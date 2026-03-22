@@ -4,10 +4,17 @@ import { getHelpText, parseCliArgs } from '../../src/cli.js'
 describe('parseCliArgs', () => {
   it('parses supported CLI flags', () => {
     const args = parseCliArgs([
+      'setup',
       '--config',
       '/tmp/openclaw.json',
       '--router-config',
       '/tmp/router.config.json',
+      '--base-url',
+      'http://127.0.0.1:3333',
+      '--provider-id',
+      'router',
+      '--model-id',
+      'smart',
       '--port',
       '3001',
       '--host',
@@ -21,9 +28,13 @@ describe('parseCliArgs', () => {
     ])
 
     expect(args).toEqual({
+      command: 'setup',
       help: false,
       configPath: '/tmp/openclaw.json',
       routerConfigPath: '/tmp/router.config.json',
+      baseUrl: 'http://127.0.0.1:3333',
+      providerId: 'router',
+      modelId: 'smart',
       port: 3001,
       host: '127.0.0.1',
       logLevel: 'debug',
@@ -33,13 +44,17 @@ describe('parseCliArgs', () => {
   })
 
   it('returns help mode when requested', () => {
-    expect(parseCliArgs(['--help'])).toEqual({ help: true })
+    expect(parseCliArgs(['--help'])).toEqual({ command: 'serve', help: true })
   })
 
   it('throws for invalid integer values', () => {
     expect(() => parseCliArgs(['--port', 'abc'])).toThrow(
       'Invalid value for --port: expected an integer, received "abc"',
     )
+  })
+
+  it('defaults to serve when no command is given', () => {
+    expect(parseCliArgs([])).toEqual({ command: 'serve', help: false })
   })
 })
 
@@ -48,6 +63,7 @@ describe('getHelpText', () => {
     const helpText = getHelpText('claw-auto-router')
 
     expect(helpText).toContain('claw-auto-router')
+    expect(helpText).toContain('setup')
     expect(helpText).toContain('--config <path>')
     expect(helpText).toContain('--router-config <path>')
   })

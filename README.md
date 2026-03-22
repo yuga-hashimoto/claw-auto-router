@@ -48,13 +48,13 @@ Each request is classified into one of four tiers. claw-auto-router then picks t
 | SIMPLE | short greetings, simple Q&A, < 200 tokens | fast, cheap |
 | STANDARD | everything else | config order |
 
-**Explicit tier assignments** (set via startup wizard or `router.config.json`) always override heuristics.
+**Explicit tier assignments** (set via `claw-auto-router setup` or `router.config.json`) always override heuristics.
 
 ---
 
 ## Startup wizard
 
-On first run, claw-auto-router prompts you to classify any model that lacks a tier assignment:
+During `claw-auto-router setup` (and later startup if tiers are still missing), claw-auto-router prompts you to classify any model that lacks a tier assignment:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -77,7 +77,7 @@ On first run, claw-auto-router prompts you to classify any model that lacks a ti
   ✓ Assigned to CODE
 ```
 
-Assignments are saved to `router.config.json` and take effect immediately.
+Assignments are saved to `~/.openclaw/router.config.json` by default (or next to the config file you target with `--config`) and take effect immediately.
 
 ---
 
@@ -123,14 +123,16 @@ If you already use Node.js, the best install UX is a single npm command.
 
 ```bash
 npm install -g claw-auto-router
-claw-auto-router --help
+claw-auto-router setup
 claw-auto-router
 ```
 
-`claw-auto-router` automatically reads:
+`claw-auto-router setup` automatically:
 
-- `~/.openclaw/openclaw.json`
-- `~/.openclaw/moltbot.json`
+- detects your active OpenClaw config via `openclaw config file`
+- asks you to assign tiers to your current models
+- writes `~/.openclaw/router.config.json`
+- updates your OpenClaw config to point `claw-auto-router/auto` at the local router
 
 It also installs a short alias:
 
@@ -142,16 +144,20 @@ Useful examples:
 
 ```bash
 # Use an explicit OpenClaw config path
-claw-auto-router --config ~/.openclaw/moltbot.json
+claw-auto-router setup --config ~/.openclaw/moltbot.json
 
-# Use a custom router config and port
-claw-auto-router --router-config ./router.config.json --port 3001
+# Use a custom router port during setup
+claw-auto-router setup --port 3001
+
+# Start the router afterward
+claw-auto-router --port 3001
 ```
 
 If you want the latest unreleased version straight from GitHub instead:
 
 ```bash
 npm install -g github:yuga-hashimoto/claw-auto-router
+claw-auto-router setup
 claw-auto-router
 ```
 
@@ -202,7 +208,7 @@ curl http://localhost:3000/health
 curl http://localhost:3000/v1/models
 ```
 
-If `/v1/models` returns an empty list, clawr found your config but could not resolve any API keys yet.
+If `/v1/models` returns an empty list, claw-auto-router found your config but could not resolve any API keys yet.
 
 ### Local install: Node.js + pnpm
 
@@ -218,11 +224,13 @@ Use this if you want local development, hot reload, or to modify the code.
 # Install dependencies
 pnpm install
 
-# Copy env template
-cp .env.example .env
-# Edit .env only if you need to add missing provider keys
+# Build the CLI once
+pnpm build
 
-# Start dev server (prompts tier wizard on first run)
+# Run one-time setup against your OpenClaw config
+pnpm start -- setup
+
+# Then start the router
 pnpm dev
 ```
 
@@ -232,7 +240,7 @@ For a production-style local run:
 
 ```bash
 pnpm install
-cp .env.example .env
+pnpm start -- setup
 pnpm build
 pnpm start
 ```
@@ -249,7 +257,14 @@ pnpm typecheck    # Type-check
 
 ## `router.config.json`
 
-Optional local config for claw-auto-router-specific settings (not duplicated in OpenClaw config):
+Optional claw-auto-router-specific settings.
+
+Default path:
+
+- `~/.openclaw/router.config.json`
+- If you run `claw-auto-router setup --config /path/to/openclaw.json`, it writes `/path/to/router.config.json`
+
+Example:
 
 ```json
 {
@@ -279,6 +294,8 @@ Optional local config for claw-auto-router-specific settings (not duplicated in 
 | `tierPriority` | Preferred model order within each tier (explicit beats score) |
 | `extraProviders` | Providers not in your OpenClaw config (e.g. openrouter, openai-codex) |
 | `denylist` | Models to exclude from routing |
+
+`claw-auto-router setup` also writes `openClawIntegration` metadata here so the router can remember your original OpenClaw primary/fallback chain without routing to itself.
 
 ---
 
@@ -327,6 +344,8 @@ curl -X POST http://localhost:3000/reload-config \
 ---
 
 ## Pointing OpenClaw at claw-auto-router
+
+If you use `claw-auto-router setup`, you do **not** need to edit OpenClaw manually.
 
 Add to your `moltbot.json` (or `openclaw.json`):
 

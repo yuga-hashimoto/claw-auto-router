@@ -87,4 +87,36 @@ describe('buildCandidateChain', () => {
     const chain = buildCandidateChain(undefined, {}, emptyRegistry)
     expect(chain).toHaveLength(0)
   })
+
+  it('uses saved upstream selection instead of the router self-reference', () => {
+    const registry = new ProviderRegistry([
+      makeModel('claw-auto-router/auto'),
+      makeModel('kimi-coding/k2p5'),
+      makeModel('nvidia/qwen/qwen3.5-397b-a17b'),
+    ])
+
+    const setupConfig: RawConfig = {
+      agents: {
+        defaults: {
+          model: {
+            primary: 'claw-auto-router/auto',
+            fallbacks: ['kimi-coding/k2p5', 'nvidia/qwen/qwen3.5-397b-a17b'],
+          },
+        },
+      },
+    }
+
+    const chain = buildCandidateChain(undefined, setupConfig, registry, 'STANDARD', {
+      openClawIntegration: {
+        providerId: 'claw-auto-router',
+        modelId: 'auto',
+        baseUrl: 'http://127.0.0.1:3000',
+        upstreamPrimary: 'kimi-coding/k2p5',
+        upstreamFallbacks: ['nvidia/qwen/qwen3.5-397b-a17b'],
+      },
+    })
+
+    expect(chain[0]?.model.id).toBe('kimi-coding/k2p5')
+    expect(chain.every((candidate) => candidate.model.id !== 'claw-auto-router/auto')).toBe(true)
+  })
 })

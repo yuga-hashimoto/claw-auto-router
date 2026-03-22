@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { OpenClawConfigSchema, type RawConfig } from './schema.js'
 import { ConfigError } from '../utils/errors.js'
+import { resolveUserPath } from '../utils/paths.js'
 
 /** Ordered list of default config paths to try */
 const DEFAULT_PATHS = [
@@ -33,7 +34,7 @@ export type LoadOutcome =
  *   3. ~/.openclaw/moltbot.json
  */
 export function loadOpenClawConfig(overridePath?: string): LoadOutcome {
-  const candidates = overridePath ? [overridePath] : DEFAULT_PATHS
+  const candidates = overridePath ? [resolveUserPath(overridePath)] : DEFAULT_PATHS
 
   for (const candidate of candidates) {
     if (!existsSync(candidate)) continue

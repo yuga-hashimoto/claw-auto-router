@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline/promises'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import type { NormalizedModel } from '../providers/types.js'
 import type { RoutingTier } from '../router/types.js'
+import { loadRouterConfig, saveRouterConfig } from '../config/router-config.js'
 
 interface TierChoice {
   key: string
@@ -127,14 +127,6 @@ export async function runTierWizard(
 }
 
 function saveTiersToConfig(tiers: Record<string, RoutingTier>, path: string): void {
-  let existing: Record<string, unknown> = {}
-  if (existsSync(path)) {
-    try {
-      existing = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
-    } catch {
-      // ignore parse errors — we'll overwrite
-    }
-  }
-  const updated = { ...existing, modelTiers: tiers }
-  writeFileSync(path, JSON.stringify(updated, null, 2) + '\n', 'utf-8')
+  const existing = loadRouterConfig(path)
+  saveRouterConfig({ ...existing, modelTiers: tiers }, path)
 }

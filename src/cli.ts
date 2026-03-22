@@ -1,9 +1,13 @@
 import { parseArgs } from 'node:util'
 
 export interface CliOptions {
+  command: 'serve' | 'setup'
   help: boolean
   configPath?: string
   routerConfigPath?: string
+  baseUrl?: string
+  providerId?: string
+  modelId?: string
   port?: number
   host?: string
   logLevel?: string
@@ -25,9 +29,9 @@ function parseIntegerOption(name: string, value?: string): number | undefined {
 }
 
 export function parseCliArgs(argv: string[]): CliOptions {
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     args: argv,
-    allowPositionals: false,
+    allowPositionals: true,
     options: {
       help: {
         type: 'boolean',
@@ -38,6 +42,15 @@ export function parseCliArgs(argv: string[]): CliOptions {
         short: 'c',
       },
       'router-config': {
+        type: 'string',
+      },
+      'base-url': {
+        type: 'string',
+      },
+      'provider-id': {
+        type: 'string',
+      },
+      'model-id': {
         type: 'string',
       },
       port: {
@@ -59,7 +72,24 @@ export function parseCliArgs(argv: string[]): CliOptions {
     },
   })
 
+  const rawCommand = positionals[0]
+  let command: CliOptions['command'] = 'serve'
+  if (rawCommand !== undefined) {
+    if (rawCommand === 'setup') {
+      command = 'setup'
+    } else if (rawCommand === 'serve' || rawCommand === 'start') {
+      command = 'serve'
+    } else {
+      throw new Error(`Unknown command "${rawCommand}"`)
+    }
+  }
+
+  if (positionals.length > 1) {
+    throw new Error(`Unexpected extra arguments: ${positionals.slice(1).join(' ')}`)
+  }
+
   const options: CliOptions = {
+    command,
     help: values.help ?? false,
   }
 
@@ -69,6 +99,18 @@ export function parseCliArgs(argv: string[]): CliOptions {
 
   if (values['router-config'] !== undefined) {
     options.routerConfigPath = values['router-config']
+  }
+
+  if (values['base-url'] !== undefined) {
+    options.baseUrl = values['base-url']
+  }
+
+  if (values['provider-id'] !== undefined) {
+    options.providerId = values['provider-id']
+  }
+
+  if (values['model-id'] !== undefined) {
+    options.modelId = values['model-id']
   }
 
   const port = parseIntegerOption('port', values.port)
@@ -101,16 +143,29 @@ export function getHelpText(commandName = 'clawr'): string {
 
 Usage:
   ${commandName} [options]
+  ${commandName} setup [options]
 
-Options:
+Commands:
+  setup                            Detect OpenClaw config, ask for model tiers,
+                                   and wire OpenClaw to use ${commandName}
+
+Common options:
   -h, --help                       Show this help message
   -c, --config <path>             Path to openclaw.json or moltbot.json
       --router-config <path>      Path to router.config.json
   -p, --port <number>             HTTP port (default: 3000)
+      --base-url <url>            Base URL written into OpenClaw during setup
+      --provider-id <id>          Provider id written into OpenClaw during setup
+      --model-id <id>             Model id written into OpenClaw during setup
       --host <host>               Bind host (default: 0.0.0.0)
       --log-level <level>         trace|debug|info|warn|error
       --admin-token <token>       Protect POST /reload-config
       --request-timeout-ms <ms>   Upstream request timeout in milliseconds
+
+Examples:
+  ${commandName} setup
+  ${commandName} setup --config ~/.openclaw/moltbot.json
+  ${commandName} --port 3001
 
 Environment fallback:
   OPENCLAW_CONFIG_PATH

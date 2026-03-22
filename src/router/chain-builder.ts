@@ -21,8 +21,14 @@ export function buildCandidateChain(
 ): RouteCandidate[] {
   const configCandidates: RouteCandidate[] = []
   const seen = new Set<string>()
+  const integration = routerConfig?.openClawIntegration
+  const selfRef =
+    integration !== undefined ? `${integration.providerId}/${integration.modelId}` : undefined
+  const primary = integration?.upstreamPrimary ?? config.agents?.defaults?.model?.primary
+  const fallbacks = integration?.upstreamFallbacks ?? config.agents?.defaults?.model?.fallbacks ?? []
 
   function tryAdd(ref: string, reason: string): void {
+    if (selfRef !== undefined && ref === selfRef) return
     if (seen.has(ref)) return
     const model = registry.lookup(ref)
     if (model === undefined) return // phantom ref
@@ -42,19 +48,18 @@ export function buildCandidateChain(
   }
 
   // 2. Primary model from config
-  const primary = config.agents?.defaults?.model?.primary
   if (primary !== undefined) {
     tryAdd(primary, 'primary model from OpenClaw config')
   }
 
   // 3. Fallbacks from config (in declared order)
-  const fallbacks = config.agents?.defaults?.model?.fallbacks ?? []
   for (const ref of fallbacks) {
     tryAdd(ref, 'fallback from OpenClaw config')
   }
 
   // 4. Any other resolvable model as last resort
   for (const model of registry.resolvable()) {
+    if (selfRef !== undefined && model.id === selfRef) continue
     if (!seen.has(model.id)) {
       seen.add(model.id)
       configCandidates.push({ model, position: configCandidates.length, reason: 'last-resort candidate' })

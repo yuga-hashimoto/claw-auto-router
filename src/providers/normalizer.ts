@@ -24,6 +24,7 @@ export function normalizeConfig(
   const warnings: string[] = []
   const providers: NormalizedProvider[] = []
   const models: NormalizedModel[] = []
+  const selfProviderId = routerConfig?.openClawIntegration?.providerId
 
   // Merge OpenClaw providers with extra providers from router.config.json.
   const rawProviders: Record<string, {
@@ -52,6 +53,10 @@ export function normalizeConfig(
   const providerMap = new Map<string, NormalizedProvider>()
 
   for (const [providerId, rawProvider] of Object.entries(rawProviders)) {
+    if (selfProviderId !== undefined && providerId === selfProviderId) {
+      continue
+    }
+
     const apiKeyResolution = resolveApiKey(providerId, rawProvider, authProfiles)
     const providerApi: ApiStyle = rawProvider.api
 

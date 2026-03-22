@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import type { StatsCollector } from '../../stats/collector.js'
 import type { RouterConfig } from '../../config/router-config.js'
 import { loadOpenClawConfig } from '../../config/loader.js'
-import { loadRouterConfig } from '../../config/router-config.js'
+import { loadRouterConfig, resolveRouterConfigPath } from '../../config/router-config.js'
 import { normalizeConfig } from '../../providers/normalizer.js'
 import { ProviderRegistry } from '../../providers/registry.js'
 import { getEnv } from '../../utils/env.js'
@@ -48,7 +48,8 @@ export function registerReloadRoute(
     }
 
     // Also reload router.config.json
-    const newRouterConfig = loadRouterConfig()
+    const routerConfigPath = resolveRouterConfigPath(undefined, outcome.path)
+    const newRouterConfig = loadRouterConfig(routerConfigPath, outcome.path)
     const { providers, models, warnings } = normalizeConfig(outcome.config, newRouterConfig)
 
     for (const w of warnings) {
