@@ -2,7 +2,7 @@
 
 A self-hosted, OpenAI-compatible LLM router for [OpenClaw](https://openclaw.ai) — automatically imports your provider/model configuration and routes each request to the best available model.
 
-**Primary use case:** Discord → OpenClaw → clawr → best provider/model
+**Primary use case:** Discord → OpenClaw → claw-auto-router → best provider/model
 
 ---
 
@@ -10,7 +10,7 @@ A self-hosted, OpenAI-compatible LLM router for [OpenClaw](https://openclaw.ai) 
 
 OpenClaw lets you configure multiple LLM providers and run agents across them. But when you want a single "smart" endpoint that automatically picks the best model for each request — without duplicating configuration — you need a router.
 
-clawr:
+claw-auto-router:
 - Reads your existing OpenClaw config (zero duplication)
 - Exposes an OpenAI-compatible API so OpenClaw treats it like a normal provider
 - Routes requests to the most suitable model based on content (tier-based heuristics + explicit assignments)
@@ -25,7 +25,7 @@ OpenClaw (Discord bot)
     │
     │  POST /v1/chat/completions
     ▼
-clawr  (this project, port 3000)
+claw-auto-router  (this project, port 3000)
     │
     ├── Config loader      reads ~/.openclaw/moltbot.json (or openclaw.json)
     ├── Provider registry   normalizes providers/models
@@ -39,7 +39,7 @@ clawr  (this project, port 3000)
 
 ### Routing tiers
 
-Each request is classified into one of four tiers. clawr then picks the best model for that tier:
+Each request is classified into one of four tiers. claw-auto-router then picks the best model for that tier:
 
 | Tier | Triggers | Preferred model traits |
 |------|----------|------------------------|
@@ -54,11 +54,11 @@ Each request is classified into one of four tiers. clawr then picks the best mod
 
 ## Startup wizard
 
-On first run, clawr prompts you to classify any model that lacks a tier assignment:
+On first run, claw-auto-router prompts you to classify any model that lacks a tier assignment:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│              clawr — Model Tier Setup Wizard                 │
+│              claw-auto-router — Model Tier Setup Wizard                 │
 │  Assign each model to its best routing tier.                 │
 │  Press Enter or type 5 to skip (heuristics decide).          │
 └──────────────────────────────────────────────────────────────┘
@@ -138,7 +138,7 @@ pnpm typecheck    # Type-check
 
 ## `router.config.json`
 
-Optional local config for clawr-specific settings (not duplicated in OpenClaw config):
+Optional local config for claw-auto-router-specific settings (not duplicated in OpenClaw config):
 
 ```json
 {
@@ -215,7 +215,7 @@ curl -X POST http://localhost:3000/reload-config \
 
 ---
 
-## Pointing OpenClaw at clawr
+## Pointing OpenClaw at claw-auto-router
 
 Add to your `moltbot.json` (or `openclaw.json`):
 
@@ -223,7 +223,7 @@ Add to your `moltbot.json` (or `openclaw.json`):
 {
   "models": {
     "providers": {
-      "clawr": {
+      "claw-auto-router": {
         "baseUrl": "http://localhost:3000",
         "apiKey": "any-value",
         "api": "openai-completions",
@@ -242,14 +242,14 @@ Add to your `moltbot.json` (or `openclaw.json`):
   "agents": {
     "defaults": {
       "model": {
-        "primary": "clawr/auto"
+        "primary": "claw-auto-router/auto"
       }
     }
   }
 }
 ```
 
-Set your agent model to `clawr/auto`. OpenClaw sends chat completions to clawr, which routes to the actual best model internally.
+Set your agent model to `claw-auto-router/auto`. OpenClaw sends chat completions to claw-auto-router, which routes to the actual best model internally.
 
 ---
 
@@ -279,11 +279,11 @@ Set your agent model to `clawr/auto`. OpenClaw sends chat completions to clawr, 
 docker compose up
 
 # Manual run (mounts your OpenClaw config read-only)
-docker build -t clawr .
+docker build -t claw-auto-router .
 docker run -p 3000:3000 \
   -v ~/.openclaw:/root/.openclaw:ro \
   -e ZAI_API_KEY=your-key \
-  clawr
+  claw-auto-router
 ```
 
 ---
@@ -303,4 +303,4 @@ docker run -p 3000:3000 \
 → All providers returned errors. Check `GET /stats` for per-model failure counts and server logs for specific HTTP errors.
 
 **Wizard doesn't appear**
-→ clawr only runs the wizard when stdin/stdout are TTYs. In Docker or CI, set `modelTiers` in `router.config.json` manually.
+→ claw-auto-router only runs the wizard when stdin/stdout are TTYs. In Docker or CI, set `modelTiers` in `router.config.json` manually.
