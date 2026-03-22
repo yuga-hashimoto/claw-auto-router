@@ -119,12 +119,10 @@ Pick the path that matches your setup:
 
 If you already use Node.js, the best install UX is a single npm command.
 
-#### Install from GitHub today
-
-This repo is ready for npm-style installation directly from GitHub:
+#### Install from npm
 
 ```bash
-npm install -g github:yuga-hashimoto/claw-auto-router
+npm install -g claw-auto-router
 claw-auto-router --help
 claw-auto-router
 ```
@@ -150,12 +148,10 @@ claw-auto-router --config ~/.openclaw/moltbot.json
 claw-auto-router --router-config ./router.config.json --port 3001
 ```
 
-#### Publish target
-
-If you publish this package to the npm registry later, the install flow becomes:
+If you want the latest unreleased version straight from GitHub instead:
 
 ```bash
-npm install -g claw-auto-router
+npm install -g github:yuga-hashimoto/claw-auto-router
 claw-auto-router
 ```
 
