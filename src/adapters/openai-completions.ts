@@ -1,6 +1,8 @@
 import { fetch, type Response } from 'undici'
 import type { AdapterRequest, AdapterResponse } from './types.js'
 import type { NormalizedModel } from '../providers/types.js'
+import { resolveCopilotApiToken } from '../providers/github-copilot-token.js'
+import { resolveModelCredentials } from '../providers/oauth.js'
 
 /**
  * OpenAI-compatible adapter.
@@ -12,8 +14,19 @@ export async function callOpenAI(
   request: AdapterRequest,
   timeoutMs: number,
 ): Promise<AdapterResponse> {
-  const apiKey =
-    model.apiKeyResolution.status === 'resolved' ? model.apiKeyResolution.key : undefined
+  const credentials = await resolveModelCredentials(model)
+  let apiKey = credentials.secret
+  let baseUrl = model.baseUrl
+  const extraHeaders: Record<string, string> = {}
+
+  if (model.providerId === 'github-copilot' && apiKey !== undefined) {
+    const copilotToken = await resolveCopilotApiToken(apiKey)
+    apiKey = copilotToken.token
+    baseUrl = copilotToken.baseUrl
+    extraHeaders['Editor-Version'] = 'vscode/1.96.2'
+    extraHeaders['User-Agent'] = 'GitHubCopilotChat/0.26.7'
+    extraHeaders['Copilot-Integration-Id'] = 'vscode-chat'
+  }
 
   const body = {
     model: model.modelId,
@@ -29,10 +42,11 @@ export async function callOpenAI(
 
   let response: Response
   try {
-    response = await fetch(`${model.baseUrl}/chat/completions`, {
+    response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...extraHeaders,
         ...(apiKey !== undefined ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
       body: JSON.stringify(body),

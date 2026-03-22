@@ -2,6 +2,7 @@ import { fetch, type Response } from 'undici'
 import type { AdapterRequest, AdapterResponse } from './types.js'
 import type { NormalizedModel } from '../providers/types.js'
 import type { OpenAIMessage } from '../router/types.js'
+import { resolveModelCredentials } from '../providers/oauth.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
 
@@ -64,7 +65,19 @@ function extractAnthropicContent(msg: OpenAIMessage): string | AnthropicContentB
     if (part.type === 'text' && part.text !== undefined) {
       blocks.push({ type: 'text', text: part.text })
     }
-    // image_url parts are skipped in v1 — would need base64 conversion for Anthropic
+    if (part.type === 'image_url') {
+      const parsed = parseAnthropicImage(part.image_url?.url)
+      if (parsed !== undefined) {
+        blocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: parsed.mimeType,
+            data: parsed.data,
+          },
+        })
+      }
+    }
   }
   return blocks.length === 1 && blocks[0] !== undefined ? blocks[0].text ?? '' : blocks
 }
@@ -121,8 +134,8 @@ export async function callAnthropic(
   request: AdapterRequest,
   timeoutMs: number,
 ): Promise<AdapterResponse> {
-  const apiKey =
-    model.apiKeyResolution.status === 'resolved' ? model.apiKeyResolution.key : undefined
+  const credentials = await resolveModelCredentials(model)
+  const apiKey = credentials.secret
 
   const anthropicBody = toAnthropicRequest(model, request)
 
@@ -131,12 +144,16 @@ export async function callAnthropic(
 
   let response: Response
   try {
-    response = await fetch(`${model.baseUrl}/messages`, {
+    response = await fetch(resolveAnthropicMessagesEndpoint(model.baseUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': ANTHROPIC_VERSION,
-        ...(apiKey !== undefined ? { 'x-api-key': apiKey } : {}),
+        ...(apiKey !== undefined
+          ? model.authHeader === true
+            ? { Authorization: `Bearer ${apiKey}` }
+            : { 'x-api-key': apiKey }
+          : {}),
       },
       body: JSON.stringify(anthropicBody),
       signal: controller.signal,
@@ -149,6 +166,15 @@ export async function callAnthropic(
   response.headers.forEach((value, key) => {
     headers[key] = value
   })
+
+  if (response.status >= 400) {
+    return {
+      body: await parseErrorBody(response),
+      statusCode: response.status,
+      headers,
+      streaming: false,
+    }
+  }
 
   if (request.stream && response.body !== null) {
     return {
@@ -228,4 +254,46 @@ function formatOpenAIChunk(id: string, delta: Record<string, any>, finishReason:
     choices: [{ index: 0, delta, finish_reason: finishReason }],
   }
   return `data: ${JSON.stringify(chunk)}\n\n`
+}
+
+function parseAnthropicImage(url: string | undefined): { mimeType: string; data: string } | undefined {
+  if (url === undefined || url === '') {
+    return undefined
+  }
+
+  const match = /^data:([^;,]+);base64,(.+)$/i.exec(url)
+  if (match === null) {
+    return undefined
+  }
+
+  const mimeType = match[1]
+  const data = match[2]
+  if (mimeType === undefined || data === undefined) {
+    return undefined
+  }
+
+  return { mimeType, data }
+}
+
+function resolveAnthropicMessagesEndpoint(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, '')
+
+  if (normalized.endsWith('/messages')) {
+    return normalized
+  }
+
+  if (normalized.endsWith('/v1')) {
+    return `${normalized}/messages`
+  }
+
+  return `${normalized}/v1/messages`
+}
+
+async function parseErrorBody(response: Response): Promise<unknown> {
+  const text = await response.text()
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return { error: text }
+  }
 }

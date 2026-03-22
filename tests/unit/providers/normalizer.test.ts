@@ -216,4 +216,24 @@ describe('normalizeConfig — auto-population', () => {
     expect(models.find((model) => model.id === 'claw-auto-router/auto')).toBeUndefined()
     expect(models.find((model) => model.id === 'nvidia/qwen')).toBeDefined()
   })
+
+  it('marks OpenClaw-backed providers for gateway execution when requested', () => {
+    const { models } = normalizeConfig(validConfig, undefined, {
+      gatewayBackedProviderIds: ['nvidia', 'kimi-coding'],
+      gatewayAvailable: true,
+    })
+
+    expect(models.every((model) => model.transport === 'openclaw-gateway')).toBe(true)
+    expect(models.every((model) => model.available === true)).toBe(true)
+  })
+
+  it('keeps gateway-backed models unavailable until the OpenClaw Gateway is reachable', () => {
+    const { models, warnings } = normalizeConfig(validConfig, undefined, {
+      gatewayBackedProviderIds: ['nvidia', 'kimi-coding'],
+      gatewayAvailable: false,
+    })
+
+    expect(models.every((model) => model.available === false)).toBe(true)
+    expect(warnings.some((warning) => warning.includes('OpenClaw Gateway is unavailable'))).toBe(true)
+  })
 })

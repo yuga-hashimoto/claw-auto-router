@@ -5,7 +5,14 @@ import { getHelpText, parseCliArgs } from './cli.js'
 import { loadOpenClawConfig } from './config/loader.js'
 import { loadRouterConfig, resolveRouterConfigPath } from './config/router-config.js'
 import type { RouterConfig } from './config/router-config.js'
+import {
+  augmentConfigWithOpenClawDiscovery,
+  filterUnsupportedProviderWarnings,
+  resolveGatewayBackedProviderIds,
+} from './openclaw/discovery.js'
+import { resolveOpenClawGatewayContext, type OpenClawGatewayContext } from './openclaw/gateway.js'
 import { normalizeConfig } from './providers/normalizer.js'
+import { isModelAvailable } from './providers/types.js'
 import { ProviderRegistry } from './providers/registry.js'
 import { buildApp } from './server/app.js'
 import { runSetup } from './setup/command.js'
@@ -86,19 +93,36 @@ async function main(): Promise<void> {
 
   let registry: ProviderRegistry
   let rawConfig = outcome.ok ? outcome.config : {}
+  let gatewayContext: OpenClawGatewayContext | undefined
 
   if (!outcome.ok) {
     console.warn(`[claw-auto-router] WARNING: ${outcome.error}`)
     console.warn('[claw-auto-router] Starting with no providers. Use POST /reload-config to load.')
     registry = new ProviderRegistry([])
   } else {
-    const { providers, models, warnings } = normalizeConfig(outcome.config, routerConfig)
+    gatewayContext = resolveOpenClawGatewayContext(outcome.path)
+    const {
+      config: discoveredConfig,
+      warnings: discoveryWarnings,
+    } = augmentConfigWithOpenClawDiscovery(outcome.config, outcome.path)
+    const gatewayBackedProviderIds = resolveGatewayBackedProviderIds(outcome.config, discoveredConfig)
+    const { providers, models, warnings } = normalizeConfig(discoveredConfig, routerConfig, {
+      gatewayBackedProviderIds,
+      gatewayAvailable: gatewayContext.available,
+    })
+    const visibleWarnings = filterUnsupportedProviderWarnings(warnings, discoveryWarnings)
 
-    for (const w of warnings) {
+    for (const w of gatewayBackedProviderIds.length > 0 ? gatewayContext.warnings : []) {
+      console.warn(`[claw-auto-router] ${w}`)
+    }
+    for (const w of discoveryWarnings) {
+      console.warn(`[claw-auto-router] ${w}`)
+    }
+    for (const w of visibleWarnings) {
       console.warn(`[claw-auto-router] ${w}`)
     }
 
-    const resolvable = models.filter((m) => m.apiKeyResolution.status === 'resolved')
+    const resolvable = models.filter((m) => isModelAvailable(m))
     console.info(`[claw-auto-router] Loaded config from: ${outcome.path}`)
     console.info(
       `[claw-auto-router] Providers: ${providers.length}, Models: ${models.length}, Resolvable: ${resolvable.length}`,
@@ -106,8 +130,8 @@ async function main(): Promise<void> {
 
     if (resolvable.length === 0) {
       console.warn(
-        '[claw-auto-router] WARNING: No models with resolved API keys. ' +
-          'Set provider env vars or add tokens for OAuth providers.',
+        '[claw-auto-router] WARNING: No executable models are currently available. ' +
+          'Start the OpenClaw Gateway or set direct-provider env vars, then reload the router config.',
       )
     }
 
@@ -117,12 +141,14 @@ async function main(): Promise<void> {
       resolvable,
       existingTiers,
       resolvedRouterConfigPath,
+      { interactive: false },
     )
     if (updatedTiers !== existingTiers) {
       // Wizard assigned new tiers — reload routerConfig so changes take effect
       routerConfig = loadRouterConfig(resolvedRouterConfigPath, outcome.path)
     }
 
+    rawConfig = discoveredConfig
     registry = new ProviderRegistry(models)
   }
 
@@ -132,6 +158,7 @@ async function main(): Promise<void> {
     ...(outcome.ok ? { configPath: outcome.path } : configPath !== undefined ? { configPath } : {}),
     routerConfigPath: resolvedRouterConfigPath,
     routerConfig,
+    gatewayContext,
     logLevel,
     adminToken,
     requestTimeoutMs,

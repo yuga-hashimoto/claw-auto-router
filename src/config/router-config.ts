@@ -4,6 +4,13 @@ import { homedir } from 'node:os'
 import { z } from 'zod'
 import { resolveUserPath } from '../utils/paths.js'
 
+const ApiStyleSchema = z.enum([
+  'openai-completions',
+  'anthropic-messages',
+  'openai-codex-responses',
+  'google-gemini-cli',
+])
+
 /**
  * Optional local router.config.json file.
  *
@@ -17,7 +24,7 @@ import { resolveUserPath } from '../utils/paths.js'
 const ExtraModelSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
-  api: z.enum(['openai-completions', 'anthropic-messages']).optional(),
+  api: ApiStyleSchema.optional(),
   reasoning: z.boolean().optional(),
   input: z.array(z.string()).optional(),
   contextWindow: z.number().optional(),
@@ -28,7 +35,7 @@ const ExtraProviderSchema = z.object({
   baseUrl: z.string(),
   /** Optional static API key. Prefer env vars over putting keys in this file. */
   apiKey: z.string().optional(),
-  api: z.enum(['openai-completions', 'anthropic-messages']).default('openai-completions'),
+  api: ApiStyleSchema.default('openai-completions'),
   models: z.array(ExtraModelSchema).default([]),
 })
 

@@ -13,9 +13,10 @@ const OAUTH_SENTINEL_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*-oauth$/
  *   3. api_key provider → check {PROVIDER}_API_KEY env var
  *   4. Unresolvable
  *
- * OAuth providers (qwen-portal, openai-codex) cannot do browser-based token refresh,
- * but users can supply a static bearer token via env var.
- * Example: QWEN_PORTAL_TOKEN, OPENAI_CODEX_TOKEN, ANTHROPIC_TOKEN
+ * When discovery imports OAuth credentials from OpenClaw, the current access token
+ * is treated like a resolved key here and refreshed later at request time.
+ * Users can still override with a static bearer token via env vars such as
+ * QWEN_PORTAL_TOKEN or OPENAI_CODEX_TOKEN.
  */
 export function resolveApiKey(
   providerId: string,
@@ -33,7 +34,12 @@ export function resolveApiKey(
   // Step 2: determine if this provider uses OAuth or token auth
   const profileKey = `${providerId}:default`
   const profile = authProfiles?.[profileKey]
-  const isOAuth = isOAuthSentinel || profile?.mode === 'oauth' || profile?.mode === 'token'
+  const isOAuth =
+    isOAuthSentinel ||
+    rawProvider.authMode === 'oauth' ||
+    rawProvider.authMode === 'token' ||
+    profile?.mode === 'oauth' ||
+    profile?.mode === 'token'
 
   if (isOAuth) {
     // Check for a manually-supplied static token from env

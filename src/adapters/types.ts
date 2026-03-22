@@ -1,4 +1,5 @@
 import type { OpenAIMessage } from '../router/types.js'
+import type { OpenClawGatewayContext } from '../openclaw/gateway.js'
 
 export interface AdapterRequest {
   messages: OpenAIMessage[]
@@ -6,6 +7,8 @@ export interface AdapterRequest {
   maxTokens?: number | undefined
   temperature?: number | undefined
   stream: boolean
+  openClawConfigPath?: string | undefined
+  openClawGateway?: OpenClawGatewayContext | undefined
   // Pass-through any extra OpenAI fields
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   extra?: Record<string, any> | undefined

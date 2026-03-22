@@ -15,6 +15,7 @@ claw-auto-router:
 - Exposes an OpenAI-compatible API so OpenClaw treats it like a normal provider
 - Routes requests to the most suitable model based on content (tier-based heuristics + explicit assignments)
 - Falls back automatically when a provider fails
+- Delegates imported OpenClaw models back through the OpenClaw Gateway instead of reimplementing provider OAuth here
 
 ---
 
@@ -32,9 +33,8 @@ claw-auto-router  (this project, port 3000)
     ├── Routing engine     classifies request → picks best model
     ├── Fallback proxy     tries winner, then fallbacks
     │
-    ├──► OpenAI-compat providers  (nvidia, zai, ...)
-    ├──► Anthropic-compat providers  (kimi-coding, ...)
-    └──► Any custom OpenAI-compat endpoint
+    ├──► OpenClaw Gateway  (for imported OpenClaw models, built-ins, OAuth-backed providers)
+    └──► Direct provider calls  (only for explicit extraProviders in router.config.json)
 ```
 
 ### Routing tiers
@@ -52,9 +52,9 @@ Each request is classified into one of four tiers. claw-auto-router then picks t
 
 ---
 
-## Startup wizard
+## Setup wizard
 
-During `claw-auto-router setup` (and later startup if tiers are still missing), claw-auto-router prompts you to classify any model that lacks a tier assignment:
+During `claw-auto-router setup`, claw-auto-router prompts you to classify any model that lacks a tier assignment:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -91,9 +91,21 @@ Config discovery order:
 
 From the config it extracts:
 - `models.providers.*` — base URLs, API styles, model definitions
+- OpenClaw agent `models.json` / `models list --json` — implicit configured providers and models such as OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, and Google Antigravity
 - `agents.defaults.model.primary` — top-priority model
 - `agents.defaults.model.fallbacks` — fallback chain order
 - `agents.defaults.models.*` — aliases
+
+Execution path:
+- Providers imported from OpenClaw run back through the OpenClaw Gateway with a provider/model override
+- This means built-in and OAuth-backed providers like OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, Qwen Portal, and Google Antigravity stay on OpenClaw's auth/runtime path
+- `extraProviders` in `router.config.json` are still called directly by claw-auto-router
+
+Supported direct transports for `extraProviders` are:
+- `openai-completions`
+- `anthropic-messages`
+- `openai-codex-responses`
+- `google-gemini-cli`
 
 ### API key resolution
 
@@ -104,7 +116,14 @@ From the config it extracts:
 | No key in config | Checks `{PROVIDER_ID_UPPER}_API_KEY` env var |
 | Not resolvable | Hidden from routing pool |
 
-Only models with a resolved API key appear in `/v1/models` and routing.
+Visibility rules:
+- OpenClaw-backed models appear in `/v1/models` when the OpenClaw Gateway is reachable
+- Direct `extraProviders` appear when claw-auto-router can resolve their local API key or token
+- If the Gateway is down, imported OpenClaw models are hidden until it comes back
+
+Current caveats for OpenClaw-backed execution:
+- Streaming is synthesized from the final Gateway result today, so imported models do not token-stream incrementally yet
+- Image inputs for Gateway-backed requests currently support `data:image/...;base64,...` URLs from the latest user turn
 
 ---
 
@@ -127,9 +146,16 @@ claw-auto-router setup
 claw-auto-router
 ```
 
+Make sure your OpenClaw Gateway is running before you expect imported models to route:
+
+```bash
+openclaw gateway status
+```
+
 `claw-auto-router setup` automatically:
 
 - detects your active OpenClaw config via `openclaw config file`
+- imports the current OpenClaw model catalog, including built-in configured providers like OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, and Google Antigravity
 - asks you to assign tiers to your current models
 - writes `~/.openclaw/router.config.json`
 - updates your OpenClaw config to point `claw-auto-router/auto` at the local router
@@ -208,7 +234,9 @@ curl http://localhost:3000/health
 curl http://localhost:3000/v1/models
 ```
 
-If `/v1/models` returns an empty list, claw-auto-router found your config but could not resolve any API keys yet.
+If `/v1/models` returns an empty list:
+- start or fix the OpenClaw Gateway for imported models
+- or add local env vars for any direct `extraProviders`
 
 ### Local install: Node.js + pnpm
 
@@ -292,7 +320,7 @@ Example:
 |-------|-------------|
 | `modelTiers` | Explicit tier per model — overrides heuristic scoring. Set by startup wizard. |
 | `tierPriority` | Preferred model order within each tier (explicit beats score) |
-| `extraProviders` | Providers not in your OpenClaw config (e.g. openrouter, openai-codex) |
+| `extraProviders` | Providers not in your OpenClaw config (e.g. openrouter, openai-codex, google-gemini-cli) |
 | `denylist` | Models to exclude from routing |
 
 `claw-auto-router setup` also writes `openClawIntegration` metadata here so the router can remember your original OpenClaw primary/fallback chain without routing to itself.
@@ -399,6 +427,7 @@ Set your agent model to `claw-auto-router/auto`. OpenClaw sends chat completions
 | `OPENROUTER_API_KEY` | _(none)_ | OpenRouter key |
 | `NVIDIA_API_KEY` | _(none)_ | NVIDIA key (if not in config) |
 | `QWEN_PORTAL_TOKEN` | _(none)_ | qwen-portal OAuth token |
+| `OPENAI_CODEX_TOKEN` | _(none)_ | Override token for openai-codex |
 
 ---
 

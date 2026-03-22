@@ -1,5 +1,14 @@
 import { z } from 'zod'
 
+const ApiStyleSchema = z.enum([
+  'openai-completions',
+  'anthropic-messages',
+  'openai-codex-responses',
+  'google-gemini-cli',
+])
+
+const AuthModeSchema = z.enum(['token', 'api_key', 'oauth'])
+
 const CostSchema = z.object({
   input: z.number().default(0),
   output: z.number().default(0),
@@ -10,7 +19,7 @@ const CostSchema = z.object({
 const RawModelEntrySchema = z.object({
   id: z.string(),
   name: z.string().optional(),
-  api: z.enum(['openai-completions', 'anthropic-messages']).optional(),
+  api: ApiStyleSchema.optional(),
   reasoning: z.boolean().optional(),
   input: z.array(z.string()).optional(),
   cost: CostSchema.optional(),
@@ -21,7 +30,14 @@ const RawModelEntrySchema = z.object({
 const RawProviderSchema = z.object({
   baseUrl: z.string(),
   apiKey: z.string().optional(),
-  api: z.enum(['openai-completions', 'anthropic-messages']).default('openai-completions'),
+  api: ApiStyleSchema.default('openai-completions'),
+  authMode: AuthModeSchema.optional(),
+  authProfileId: z.string().optional(),
+  oauthRefreshToken: z.string().optional(),
+  oauthExpiresAt: z.number().optional(),
+  oauthProjectId: z.string().optional(),
+  oauthAccountId: z.string().optional(),
+  authHeader: z.boolean().optional(),
   models: z.array(RawModelEntrySchema).default([]),
 })
 

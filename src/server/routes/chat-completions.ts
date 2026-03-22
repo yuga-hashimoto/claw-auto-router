@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import type { RawConfig } from '../../config/schema.js'
 import type { RouterConfig } from '../../config/router-config.js'
+import type { OpenClawGatewayContext } from '../../openclaw/gateway.js'
 import type { ProviderRegistry } from '../../providers/registry.js'
 import type { StatsCollector } from '../../stats/collector.js'
 import { route } from '../../router/router.js'
@@ -28,8 +29,10 @@ type ChatRequest = z.infer<typeof ChatCompletionRequestSchema>
 
 interface RouteContext {
   getConfig: () => RawConfig
+  getConfigPath: () => string | undefined
   getRegistry: () => ProviderRegistry
   getRouterConfig: () => RouterConfig
+  getGatewayContext: () => OpenClawGatewayContext | undefined
 }
 
 export function registerChatCompletionsRoute(
@@ -55,8 +58,10 @@ export function registerChatCompletionsRoute(
     const start = Date.now()
 
     const config = context.getConfig()
+    const configPath = context.getConfigPath()
     const registry = context.getRegistry()
     const routerConfig = context.getRouterConfig()
+    const gatewayContext = context.getGatewayContext()
 
     const routingRequest = {
       model: body.model,
@@ -80,6 +85,8 @@ export function registerChatCompletionsRoute(
         messages: body.messages as OpenAIMessage[],
         model: routeResult.winner.model.modelId,
         stream: body.stream ?? false,
+        ...(configPath !== undefined ? { openClawConfigPath: configPath } : {}),
+        openClawGateway: gatewayContext,
         ...(body.max_tokens !== undefined ? { maxTokens: body.max_tokens } : {}),
         ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
       }

@@ -10,6 +10,11 @@ import {
   type RouterConfig,
   type OpenClawIntegration,
 } from '../config/router-config.js'
+import {
+  augmentConfigWithOpenClawDiscovery,
+  filterUnsupportedProviderWarnings,
+  resolveGatewayBackedProviderIds,
+} from '../openclaw/discovery.js'
 import { normalizeConfig } from '../providers/normalizer.js'
 import type { NormalizedModel } from '../providers/types.js'
 import { resolveUserPath } from '../utils/paths.js'
@@ -264,11 +269,26 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
     openClawIntegration: integration,
   }
 
-  const { models } = normalizeConfig(outcome.config, setupAwareRouterConfig)
+  const {
+    config: discoveredConfig,
+    warnings: discoveryWarnings,
+  } = augmentConfigWithOpenClawDiscovery(outcome.config, outcome.path)
+  const gatewayBackedProviderIds = resolveGatewayBackedProviderIds(outcome.config, discoveredConfig)
+  const { models, warnings } = normalizeConfig(discoveredConfig, setupAwareRouterConfig, {
+    gatewayBackedProviderIds,
+    gatewayAvailable: true,
+  })
+  const visibleWarnings = filterUnsupportedProviderWarnings(warnings, discoveryWarnings)
+
+  for (const warning of [...discoveryWarnings, ...visibleWarnings]) {
+    console.warn(`[claw-auto-router] ${warning}`)
+  }
+
   const assignedTiers = await runTierWizard(
     models,
     existingRouterConfig.modelTiers ?? {},
     routerConfigPath,
+    { interactive: true },
   )
 
   saveRouterConfig(

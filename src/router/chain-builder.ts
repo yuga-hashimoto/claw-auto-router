@@ -1,6 +1,7 @@
 import type { RawConfig } from '../config/schema.js'
 import type { RouterConfig } from '../config/router-config.js'
 import type { ProviderRegistry } from '../providers/registry.js'
+import { isModelAvailable } from '../providers/types.js'
 import type { RouteCandidate, RoutingTier } from './types.js'
 import { rankCandidates } from './scorer.js'
 
@@ -32,7 +33,7 @@ export function buildCandidateChain(
     if (seen.has(ref)) return
     const model = registry.lookup(ref)
     if (model === undefined) return // phantom ref
-    if (model.apiKeyResolution.status !== 'resolved') return // no key
+    if (!isModelAvailable(model)) return
     seen.add(ref)
     configCandidates.push({ model, position: configCandidates.length, reason })
   }
@@ -41,7 +42,7 @@ export function buildCandidateChain(
   let explicitCandidate: RouteCandidate | undefined
   if (requestedModel !== undefined && requestedModel !== 'auto') {
     const model = registry.lookup(requestedModel)
-    if (model !== undefined && model.apiKeyResolution.status === 'resolved') {
+    if (model !== undefined && isModelAvailable(model)) {
       explicitCandidate = { model, position: 0, reason: 'explicitly requested by caller' }
       seen.add(model.id)
     }

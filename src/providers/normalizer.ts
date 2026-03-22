@@ -1,7 +1,12 @@
-import type { RawConfig } from '../config/schema.js'
+import type { RawConfig, RawProvider } from '../config/schema.js'
 import type { RouterConfig } from '../config/router-config.js'
-import type { NormalizedModel, NormalizedProvider, ApiStyle } from './types.js'
+import type { NormalizedModel, NormalizedProvider, ApiStyle, ExecutionMode, ApiKeyResolution } from './types.js'
 import { resolveApiKey } from './apikey-resolver.js'
+
+interface NormalizeOptions {
+  gatewayBackedProviderIds?: Iterable<string> | undefined
+  gatewayAvailable?: boolean | undefined
+}
 
 /**
  * Transform a raw OpenClaw config into normalized providers and models.
@@ -16,6 +21,7 @@ import { resolveApiKey } from './apikey-resolver.js'
 export function normalizeConfig(
   config: RawConfig,
   routerConfig?: RouterConfig,
+  options?: NormalizeOptions,
 ): {
   providers: NormalizedProvider[]
   models: NormalizedModel[]
@@ -27,27 +33,16 @@ export function normalizeConfig(
   const selfProviderId = routerConfig?.openClawIntegration?.providerId
 
   // Merge OpenClaw providers with extra providers from router.config.json.
-  const rawProviders: Record<string, {
-    baseUrl: string
-    apiKey?: string | undefined
-    api: ApiStyle
-    models: Array<{
-      id: string
-      name?: string | undefined
-      api?: ApiStyle | undefined
-      reasoning?: boolean | undefined
-      input?: string[] | undefined
-      contextWindow?: number | undefined
-      maxTokens?: number | undefined
-    }>
-  }> = {
+  const rawProviders: Record<string, RawProvider> = {
     ...(config.models?.providers ?? {}),
-    ...(routerConfig?.extraProviders ?? {}),
+    ...((routerConfig?.extraProviders ?? {}) as Record<string, RawProvider>),
   }
 
   const authProfiles = config.auth?.profiles
   const agentModels = config.agents?.defaults?.models ?? {}
   const denylist = new Set(routerConfig?.denylist ?? [])
+  const gatewayBackedProviderIds = new Set(options?.gatewayBackedProviderIds ?? [])
+  const gatewayAvailable = options?.gatewayAvailable === true
 
   // Map of providerId → NormalizedProvider for auto-population phase
   const providerMap = new Map<string, NormalizedProvider>()
@@ -59,6 +54,17 @@ export function normalizeConfig(
 
     const apiKeyResolution = resolveApiKey(providerId, rawProvider, authProfiles)
     const providerApi: ApiStyle = rawProvider.api
+    const providerTransport: ExecutionMode = gatewayBackedProviderIds.has(providerId)
+      ? 'openclaw-gateway'
+      : 'direct'
+    const providerAvailable = providerTransport === 'openclaw-gateway'
+      ? gatewayAvailable
+      : apiKeyResolution.status === 'resolved'
+    const providerUnavailableReason = !providerAvailable
+      ? providerTransport === 'openclaw-gateway'
+        ? 'OpenClaw Gateway is unavailable'
+        : describeUnavailableDirectProvider(apiKeyResolution)
+      : undefined
 
     const normalizedModels: NormalizedModel[] = []
 
@@ -84,6 +90,16 @@ export function normalizeConfig(
         contextWindow: rawModel.contextWindow ?? 128000,
         maxTokens: rawModel.maxTokens ?? 4096,
         ...(alias !== undefined ? { alias } : {}),
+        transport: providerTransport,
+        available: providerAvailable,
+        ...(providerUnavailableReason !== undefined ? { unavailableReason: providerUnavailableReason } : {}),
+        ...(rawProvider.authMode !== undefined ? { authMode: rawProvider.authMode } : {}),
+        ...(rawProvider.authProfileId !== undefined ? { authProfileId: rawProvider.authProfileId } : {}),
+        ...(rawProvider.oauthRefreshToken !== undefined ? { oauthRefreshToken: rawProvider.oauthRefreshToken } : {}),
+        ...(rawProvider.oauthExpiresAt !== undefined ? { oauthExpiresAt: rawProvider.oauthExpiresAt } : {}),
+        ...(rawProvider.oauthProjectId !== undefined ? { oauthProjectId: rawProvider.oauthProjectId } : {}),
+        ...(rawProvider.oauthAccountId !== undefined ? { oauthAccountId: rawProvider.oauthAccountId } : {}),
+        ...(rawProvider.authHeader !== undefined ? { authHeader: rawProvider.authHeader } : {}),
       }
 
       normalizedModels.push(model)
@@ -96,6 +112,16 @@ export function normalizeConfig(
       api: providerApi,
       apiKeyResolution,
       models: normalizedModels,
+      transport: providerTransport,
+      available: providerAvailable,
+      ...(providerUnavailableReason !== undefined ? { unavailableReason: providerUnavailableReason } : {}),
+      ...(rawProvider.authMode !== undefined ? { authMode: rawProvider.authMode } : {}),
+      ...(rawProvider.authProfileId !== undefined ? { authProfileId: rawProvider.authProfileId } : {}),
+      ...(rawProvider.oauthRefreshToken !== undefined ? { oauthRefreshToken: rawProvider.oauthRefreshToken } : {}),
+      ...(rawProvider.oauthExpiresAt !== undefined ? { oauthExpiresAt: rawProvider.oauthExpiresAt } : {}),
+      ...(rawProvider.oauthProjectId !== undefined ? { oauthProjectId: rawProvider.oauthProjectId } : {}),
+      ...(rawProvider.oauthAccountId !== undefined ? { oauthAccountId: rawProvider.oauthAccountId } : {}),
+      ...(rawProvider.authHeader !== undefined ? { authHeader: rawProvider.authHeader } : {}),
     }
     providers.push(normalizedProvider)
     providerMap.set(providerId, normalizedProvider)
@@ -135,6 +161,16 @@ export function normalizeConfig(
         contextWindow: 128000,
         maxTokens: 4096,
         ...(alias !== undefined ? { alias } : {}),
+        transport: provider.transport,
+        available: provider.available,
+        ...(provider.unavailableReason !== undefined ? { unavailableReason: provider.unavailableReason } : {}),
+        ...(provider.authMode !== undefined ? { authMode: provider.authMode } : {}),
+        ...(provider.authProfileId !== undefined ? { authProfileId: provider.authProfileId } : {}),
+        ...(provider.oauthRefreshToken !== undefined ? { oauthRefreshToken: provider.oauthRefreshToken } : {}),
+        ...(provider.oauthExpiresAt !== undefined ? { oauthExpiresAt: provider.oauthExpiresAt } : {}),
+        ...(provider.oauthProjectId !== undefined ? { oauthProjectId: provider.oauthProjectId } : {}),
+        ...(provider.oauthAccountId !== undefined ? { oauthAccountId: provider.oauthAccountId } : {}),
+        ...(provider.authHeader !== undefined ? { authHeader: provider.authHeader } : {}),
       }
 
       models.push(autoModel)
@@ -152,5 +188,23 @@ export function normalizeConfig(
     }
   }
 
+  if (gatewayBackedProviderIds.size > 0 && !gatewayAvailable) {
+    warnings.push(
+      'OpenClaw Gateway is unavailable, so imported OpenClaw models are temporarily disabled. Start or fix the gateway, then reload the router config.',
+    )
+  }
+
   return { providers, models, warnings }
+}
+
+function describeUnavailableDirectProvider(apiKeyResolution: ApiKeyResolution): string {
+  if (apiKeyResolution.status === 'env_missing') {
+    return `Missing API key environment variable ${apiKeyResolution.envVar}`
+  }
+
+  if (apiKeyResolution.status === 'oauth') {
+    return apiKeyResolution.reason
+  }
+
+  return 'Provider is unavailable'
 }

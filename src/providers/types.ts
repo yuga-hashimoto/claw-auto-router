@@ -1,4 +1,12 @@
-export type ApiStyle = 'openai-completions' | 'anthropic-messages'
+export type ApiStyle =
+  | 'openai-completions'
+  | 'anthropic-messages'
+  | 'openai-codex-responses'
+  | 'google-gemini-cli'
+
+export type ExecutionMode = 'direct' | 'openclaw-gateway'
+
+export type AuthMode = 'token' | 'api_key' | 'oauth'
 
 export type ApiKeyResolution =
   | { status: 'resolved'; key: string }
@@ -19,6 +27,16 @@ export interface NormalizedModel {
   contextWindow: number
   maxTokens: number
   alias?: string | undefined
+  transport?: ExecutionMode | undefined
+  available?: boolean | undefined
+  unavailableReason?: string | undefined
+  authMode?: AuthMode | undefined
+  authProfileId?: string | undefined
+  oauthRefreshToken?: string | undefined
+  oauthExpiresAt?: number | undefined
+  oauthProjectId?: string | undefined
+  oauthAccountId?: string | undefined
+  authHeader?: boolean | undefined
 }
 
 export interface NormalizedProvider {
@@ -27,4 +45,22 @@ export interface NormalizedProvider {
   api: ApiStyle
   apiKeyResolution: ApiKeyResolution
   models: NormalizedModel[]
+  transport?: ExecutionMode | undefined
+  available?: boolean | undefined
+  unavailableReason?: string | undefined
+  authMode?: AuthMode | undefined
+  authProfileId?: string | undefined
+  oauthRefreshToken?: string | undefined
+  oauthExpiresAt?: number | undefined
+  oauthProjectId?: string | undefined
+  oauthAccountId?: string | undefined
+  authHeader?: boolean | undefined
+}
+
+export function isModelAvailable(model: NormalizedModel): boolean {
+  if (typeof model.available === 'boolean') {
+    return model.available
+  }
+
+  return model.apiKeyResolution.status === 'resolved'
 }

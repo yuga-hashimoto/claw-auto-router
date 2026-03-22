@@ -50,16 +50,25 @@ export async function runTierWizard(
   models: NormalizedModel[],
   existingTiers: Record<string, RoutingTier>,
   routerConfigPath: string,
+  options?: { interactive?: boolean | undefined },
 ): Promise<Record<string, RoutingTier>> {
   const unassigned = models.filter((m) => existingTiers[m.id] === undefined)
 
   if (unassigned.length === 0) return existingTiers
 
+  if (options?.interactive !== true) {
+    console.warn(
+      `[claw-auto-router] ${unassigned.length} model(s) have no tier assignment — routing uses heuristics.`,
+    )
+    console.warn('[claw-auto-router] Run `claw-auto-router setup` to classify them interactively.')
+    return existingTiers
+  }
+
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.warn(
       `[claw-auto-router] ${unassigned.length} model(s) have no tier assignment — routing uses heuristics.`,
     )
-    console.warn('[claw-auto-router] Run interactively to classify them via the setup wizard.')
+    console.warn('[claw-auto-router] Run `claw-auto-router setup` interactively to classify them.')
     return existingTiers
   }
 

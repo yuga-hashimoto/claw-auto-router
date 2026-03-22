@@ -4,6 +4,7 @@ import type { RawConfig } from '../config/schema.js'
 import type { RouterConfig } from '../config/router-config.js'
 import { ProviderRegistry } from '../providers/registry.js'
 import { StatsCollector } from '../stats/collector.js'
+import type { OpenClawGatewayContext } from '../openclaw/gateway.js'
 import { registerErrorHandler } from './plugins/error-handler.js'
 import { registerHealthRoute } from './routes/health.js'
 import { registerModelsRoute } from './routes/models.js'
@@ -17,6 +18,7 @@ export interface AppOptions {
   configPath?: string | undefined
   routerConfigPath?: string | undefined
   routerConfig?: RouterConfig | undefined
+  gatewayContext?: OpenClawGatewayContext | undefined
   logLevel?: string | undefined
   adminToken?: string | undefined
   requestTimeoutMs?: number | undefined
@@ -38,6 +40,7 @@ export function buildApp(options: AppOptions) {
     configPath: options.configPath,
     routerConfigPath: options.routerConfigPath,
     routerConfig: options.routerConfig ?? {},
+    gatewayContext: options.gatewayContext,
   }
 
   const timeoutMs = options.requestTimeoutMs ?? 30_000
@@ -59,8 +62,10 @@ export function buildApp(options: AppOptions) {
     app,
     {
       getConfig: () => state.config,
+      getConfigPath: () => state.configPath,
       getRegistry: () => state.registry,
       getRouterConfig: () => state.routerConfig,
+      getGatewayContext: () => state.gatewayContext,
     },
     stats,
     timeoutMs,

@@ -3,6 +3,12 @@ import type { StatsCollector } from '../../stats/collector.js'
 import type { RouterConfig } from '../../config/router-config.js'
 import { loadOpenClawConfig } from '../../config/loader.js'
 import { loadRouterConfig, resolveRouterConfigPath } from '../../config/router-config.js'
+import {
+  augmentConfigWithOpenClawDiscovery,
+  filterUnsupportedProviderWarnings,
+  resolveGatewayBackedProviderIds,
+} from '../../openclaw/discovery.js'
+import { resolveOpenClawGatewayContext, type OpenClawGatewayContext } from '../../openclaw/gateway.js'
 import { normalizeConfig } from '../../providers/normalizer.js'
 import { ProviderRegistry } from '../../providers/registry.js'
 import { getEnv } from '../../utils/env.js'
@@ -14,6 +20,7 @@ interface ReloadState {
   configPath: string | undefined
   routerConfigPath: string | undefined
   routerConfig: RouterConfig
+  gatewayContext: OpenClawGatewayContext | undefined
 }
 
 export function registerReloadRoute(
@@ -52,23 +59,44 @@ export function registerReloadRoute(
     // Also reload router.config.json
     const routerConfigPath = resolveRouterConfigPath(state.routerConfigPath, outcome.path)
     const newRouterConfig = loadRouterConfig(routerConfigPath, outcome.path)
-    const { providers, models, warnings } = normalizeConfig(outcome.config, newRouterConfig)
+    const gatewayContext = resolveOpenClawGatewayContext(outcome.path)
+    const {
+      config: discoveredConfig,
+      warnings: discoveryWarnings,
+    } = augmentConfigWithOpenClawDiscovery(outcome.config, outcome.path)
+    const gatewayBackedProviderIds = resolveGatewayBackedProviderIds(outcome.config, discoveredConfig)
+    const { providers, models, warnings } = normalizeConfig(discoveredConfig, newRouterConfig, {
+      gatewayBackedProviderIds,
+      gatewayAvailable: gatewayContext.available,
+    })
+    const visibleWarnings = filterUnsupportedProviderWarnings(warnings, discoveryWarnings)
 
-    for (const w of warnings) {
+    for (const w of gatewayBackedProviderIds.length > 0 ? gatewayContext.warnings : []) {
+      app.log.warn(w)
+    }
+    for (const w of discoveryWarnings) {
+      app.log.warn(w)
+    }
+    for (const w of visibleWarnings) {
       app.log.warn(w)
     }
 
     // Atomically replace all mutable state
-    state.config = outcome.config
+    state.config = discoveredConfig
     state.registry = new ProviderRegistry(models)
     state.configPath = outcome.path
     state.routerConfigPath = routerConfigPath
     state.routerConfig = newRouterConfig
+    state.gatewayContext = gatewayContext
 
     stats.setConfigStatus({
       loaded: true,
       path: outcome.path,
-      warnings,
+      warnings: [
+        ...(gatewayBackedProviderIds.length > 0 ? gatewayContext.warnings : []),
+        ...discoveryWarnings,
+        ...visibleWarnings,
+      ],
       lastReloadAt: new Date().toISOString(),
     })
 
@@ -88,7 +116,11 @@ export function registerReloadRoute(
       providers: providers.length,
       models: models.length,
       resolvable: state.registry.resolvable().length,
-      warnings,
+      warnings: [
+        ...(gatewayBackedProviderIds.length > 0 ? gatewayContext.warnings : []),
+        ...discoveryWarnings,
+        ...visibleWarnings,
+      ],
     })
   })
 }

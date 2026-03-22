@@ -1,4 +1,4 @@
-import type { NormalizedModel } from './types.js'
+import { isModelAvailable, type NormalizedModel } from './types.js'
 
 /**
  * ProviderRegistry — flat lookup for normalized models.
@@ -34,7 +34,7 @@ export class ProviderRegistry {
 
   /** Only models with a resolved API key */
   resolvable(): NormalizedModel[] {
-    return this.all().filter((m) => m.apiKeyResolution.status === 'resolved')
+    return this.all().filter((m) => isModelAvailable(m))
   }
 
   get size(): number {
