@@ -1,0 +1,73 @@
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Read package metadata
+        id: package
+        run: |
+          echo "name=$(node -p 'require(\"./package.json\").name')" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Read npm registry version
+        id: registry
+        run: |
+          VERSION="$(npm view "${{ steps.package.outputs.name }}" version 2>/dev/null || true)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether publish is needed
+        id: publish_check
+        run: |
+          if [ -n "${{ steps.registry.outputs.version }}" ] && [ "${{ steps.package.outputs.version }}" = "${{ steps.registry.outputs.version }}" ]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "Version ${{ steps.package.outputs.version }} is already on npm. Skipping publish."
+          else
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "Publishing ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}"
+          fi
+
+      - name: Publish to npm
+        if: steps.publish_check.outputs.should_publish == 'true'
+        run: npm publish --provenance

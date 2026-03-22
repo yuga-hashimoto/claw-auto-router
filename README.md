@@ -187,6 +187,16 @@ claw-auto-router setup
 claw-auto-router
 ```
 
+### Release automation
+
+npm publishing is handled by GitHub Actions trusted publishing in
+[`publish.yml`](./.github/workflows/publish.yml).
+
+- Bump the `version` in `package.json`
+- Push to `main` or run the workflow manually from GitHub Actions
+- The workflow runs `pnpm typecheck`, `pnpm test`, and `pnpm build`
+- If that version is not already on npm, it publishes automatically without an npm token
+
 ### No-Node install: Docker Compose
 
 If you want clawr running without installing Node.js locally, use Docker.
