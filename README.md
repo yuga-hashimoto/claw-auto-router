@@ -1,4 +1,4 @@
-# clawr
+# claw-auto-router
 
 A self-hosted, OpenAI-compatible LLM router for [OpenClaw](https://openclaw.ai) — automatically imports your provider/model configuration and routes each request to the best available model.
 
