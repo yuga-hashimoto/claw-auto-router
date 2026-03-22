@@ -14,6 +14,8 @@ import { registerReloadRoute } from './routes/reload-config.js'
 export interface AppOptions {
   config: RawConfig
   registry: ProviderRegistry
+  configPath?: string | undefined
+  routerConfigPath?: string | undefined
   routerConfig?: RouterConfig | undefined
   logLevel?: string | undefined
   adminToken?: string | undefined
@@ -33,6 +35,8 @@ export function buildApp(options: AppOptions) {
   const state = {
     config: options.config,
     registry: options.registry,
+    configPath: options.configPath,
+    routerConfigPath: options.routerConfigPath,
     routerConfig: options.routerConfig ?? {},
   }
 

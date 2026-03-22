@@ -70,7 +70,7 @@ async function main(): Promise<void> {
       )
     }
     console.log('[claw-auto-router] Setup complete. Start the router with:')
-    console.log(`  ${commandName}`)
+    console.log(`  ${result.suggestedStartCommand}`)
     return
   }
 
@@ -129,6 +129,8 @@ async function main(): Promise<void> {
   const app = buildApp({
     config: rawConfig,
     registry,
+    ...(outcome.ok ? { configPath: outcome.path } : configPath !== undefined ? { configPath } : {}),
+    routerConfigPath: resolvedRouterConfigPath,
     routerConfig,
     logLevel,
     adminToken,

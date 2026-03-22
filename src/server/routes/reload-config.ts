@@ -11,6 +11,8 @@ import type { RawConfig } from '../../config/schema.js'
 interface ReloadState {
   config: RawConfig
   registry: ProviderRegistry
+  configPath: string | undefined
+  routerConfigPath: string | undefined
   routerConfig: RouterConfig
 }
 
@@ -30,7 +32,7 @@ export function registerReloadRoute(
       }
     }
 
-    const configPath = getEnv('OPENCLAW_CONFIG_PATH')
+    const configPath = state.configPath ?? getEnv('OPENCLAW_CONFIG_PATH')
     const outcome = loadOpenClawConfig(configPath)
 
     if (!outcome.ok) {
@@ -48,7 +50,7 @@ export function registerReloadRoute(
     }
 
     // Also reload router.config.json
-    const routerConfigPath = resolveRouterConfigPath(undefined, outcome.path)
+    const routerConfigPath = resolveRouterConfigPath(state.routerConfigPath, outcome.path)
     const newRouterConfig = loadRouterConfig(routerConfigPath, outcome.path)
     const { providers, models, warnings } = normalizeConfig(outcome.config, newRouterConfig)
 
@@ -59,6 +61,8 @@ export function registerReloadRoute(
     // Atomically replace all mutable state
     state.config = outcome.config
     state.registry = new ProviderRegistry(models)
+    state.configPath = outcome.path
+    state.routerConfigPath = routerConfigPath
     state.routerConfig = newRouterConfig
 
     stats.setConfigStatus({

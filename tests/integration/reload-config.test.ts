@@ -25,7 +25,12 @@ writeFileSync(
   }),
 )
 
-const app = buildApp({ config: {}, registry: new ProviderRegistry([]), logLevel: 'silent' })
+const app = buildApp({
+  config: {},
+  registry: new ProviderRegistry([]),
+  logLevel: 'silent',
+  configPath,
+})
 
 describe('POST /reload-config', () => {
   beforeAll(async () => {
@@ -47,6 +52,18 @@ describe('POST /reload-config', () => {
     expect(body.models).toBeGreaterThan(0)
     expect(body.resolvable).toBeGreaterThan(0)
     expect(body.path).toBe(configPath)
+  })
+
+  it('uses the startup config path even when OPENCLAW_CONFIG_PATH is unset', async () => {
+    delete process.env['OPENCLAW_CONFIG_PATH']
+
+    const response = await app.inject({ method: 'POST', url: '/reload-config' })
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.ok).toBe(true)
+    expect(body.path).toBe(configPath)
+
+    process.env['OPENCLAW_CONFIG_PATH'] = configPath
   })
 
   it('requires admin token when configured', async () => {

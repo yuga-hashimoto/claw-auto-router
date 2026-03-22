@@ -32,6 +32,7 @@ export interface SetupResult {
   routerConfigPath: string
   routerRef: string
   backupPath?: string
+  suggestedStartCommand: string
   inferredUpstreamFromFallbacks: boolean
   upstreamPrimary?: string
   upstreamFallbacks: string[]
@@ -77,6 +78,27 @@ function discoverOpenClawConfigPathFromCommand(): string | undefined {
   }
 
   return resolveUserPath(candidate)
+}
+
+function buildSuggestedStartCommand(port: number, baseUrl: string): string {
+  try {
+    const parsed = new URL(baseUrl)
+    const isLocalHost = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost'
+    const effectivePort =
+      parsed.port === ''
+        ? parsed.protocol === 'https:'
+          ? 443
+          : 80
+        : Number.parseInt(parsed.port, 10)
+
+    if (isLocalHost && effectivePort === port) {
+      return port === 3000 ? 'claw-auto-router' : `claw-auto-router --port ${port}`
+    }
+  } catch {
+    // Fall back to the local port-based suggestion below.
+  }
+
+  return port === 3000 ? 'claw-auto-router' : `claw-auto-router --port ${port}`
 }
 
 export function deriveUpstreamSelection(
@@ -209,6 +231,12 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
       ? resolveUserPath(options.configPath)
       : discoverOpenClawConfigPathFromCommand()
 
+  if (discoveredConfigPath === undefined && options.configPath === undefined) {
+    throw new Error(
+      'Could not detect your OpenClaw config automatically. Make sure the `openclaw` CLI is installed or pass `--config /path/to/openclaw.json`.',
+    )
+  }
+
   const outcome = loadOpenClawConfig(discoveredConfigPath)
   if (!outcome.ok) {
     throw new Error(outcome.error)
@@ -216,7 +244,8 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
 
   const providerId = options.providerId ?? DEFAULT_PROVIDER_ID
   const modelId = options.modelId ?? DEFAULT_MODEL_ID
-  const baseUrl = options.baseUrl ?? `http://127.0.0.1:${options.port ?? 3000}`
+  const port = options.port ?? 3000
+  const baseUrl = options.baseUrl ?? `http://127.0.0.1:${port}`
   const routerRef = `${providerId}/${modelId}`
   const routerConfigPath = resolveRouterConfigPath(options.routerConfigPath, outcome.path)
   const existingRouterConfig = loadRouterConfig(routerConfigPath, outcome.path)
@@ -259,6 +288,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
     openClawConfigPath: outcome.path,
     routerConfigPath,
     routerRef,
+    suggestedStartCommand: buildSuggestedStartCommand(port, baseUrl),
     ...(backupPath !== undefined ? { backupPath } : {}),
     inferredUpstreamFromFallbacks: upstream.inferredFromFallbacks,
     ...(upstream.primary !== undefined ? { upstreamPrimary: upstream.primary } : {}),
