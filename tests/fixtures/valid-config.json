@@ -1,0 +1,76 @@
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "nvidia": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "nvapi-test-key-12345",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "qwen/qwen3.5-397b-a17b",
+            "name": "Qwen3.5-397B",
+            "api": "openai-completions",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 128000,
+            "maxTokens": 8192
+          }
+        ]
+      },
+      "zai": {
+        "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "glm-4.7",
+            "name": "GLM-4.7",
+            "api": "openai-completions",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 204800,
+            "maxTokens": 131072
+          }
+        ]
+      },
+      "kimi-coding": {
+        "baseUrl": "https://api.kimi.com/coding/",
+        "api": "anthropic-messages",
+        "models": [
+          {
+            "id": "k2p5",
+            "name": "Kimi for Coding",
+            "api": "anthropic-messages",
+            "reasoning": true,
+            "input": ["text", "image"],
+            "contextWindow": 262144,
+            "maxTokens": 32768
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "kimi-coding/k2p5",
+        "fallbacks": [
+          "nvidia/qwen/qwen3.5-397b-a17b",
+          "zai/glm-4.7"
+        ]
+      },
+      "models": {
+        "kimi-coding/k2p5": { "alias": "Kimi for Coding" },
+        "nvidia/qwen/qwen3.5-397b-a17b": { "alias": "qwen3.5-397b" },
+        "zai/glm-4.7": { "alias": "GLM" }
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "nvidia:default": { "provider": "nvidia", "mode": "api_key" },
+      "zai:default": { "provider": "zai", "mode": "api_key" },
+      "kimi-coding:default": { "provider": "kimi-coding", "mode": "api_key" }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+services:
+  router:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      NODE_ENV: production
+      # Override if your config is at a non-default location
+      # OPENCLAW_CONFIG_PATH: /root/.openclaw/moltbot.json
+      # ROUTER_ADMIN_TOKEN: your-secret-token
+      # Provider keys (if not in openclaw config):
+      # ZAI_API_KEY: ...
+      # KIMI_CODING_API_KEY: ...
+    volumes:
+      # Mount your OpenClaw config directory read-only
+      - "${HOME}/.openclaw:/root/.openclaw:ro"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

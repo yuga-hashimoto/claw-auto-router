@@ -1,0 +1,17 @@
+{
+  "models": {
+    "providers": {
+      "nvidia": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "nvapi-test-key-12345",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "some-model",
+            "name": "Some Model"
+          }
+        ]
+      }
+    }
+  }
+}
