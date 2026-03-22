@@ -1,3 +1,7 @@
+#!/usr/bin/env node
+
+import { basename } from 'node:path'
+import { getHelpText, parseCliArgs } from './cli.js'
 import { loadOpenClawConfig } from './config/loader.js'
 import { loadRouterConfig, DEFAULT_ROUTER_CONFIG_PATH } from './config/router-config.js'
 import type { RouterConfig } from './config/router-config.js'
@@ -7,16 +11,34 @@ import { buildApp } from './server/app.js'
 import { runTierWizard } from './wizard/setup.js'
 import { getEnv, getEnvOrDefault, getEnvInt } from './utils/env.js'
 
+function getCommandName(): string {
+  const invoked = basename(process.argv[1] ?? '')
+  if (invoked === '' || invoked === 'index.js') {
+    return 'claw-auto-router'
+  }
+
+  return invoked
+}
+
 async function main(): Promise<void> {
-  const configPath = getEnv('OPENCLAW_CONFIG_PATH')
-  const port = getEnvInt('PORT', 3000)
-  const host = getEnvOrDefault('HOST', '0.0.0.0')
-  const logLevel = getEnvOrDefault('LOG_LEVEL', 'info')
-  const adminToken = getEnv('ROUTER_ADMIN_TOKEN')
-  const requestTimeoutMs = getEnvInt('ROUTER_REQUEST_TIMEOUT_MS', 30_000)
+  const cli = parseCliArgs(process.argv.slice(2))
+  const commandName = getCommandName()
+
+  if (cli.help) {
+    console.log(getHelpText(commandName))
+    return
+  }
+
+  const configPath = cli.configPath ?? getEnv('OPENCLAW_CONFIG_PATH')
+  const routerConfigPath = cli.routerConfigPath
+  const port = cli.port ?? getEnvInt('PORT', 3000)
+  const host = cli.host ?? getEnvOrDefault('HOST', '0.0.0.0')
+  const logLevel = cli.logLevel ?? getEnvOrDefault('LOG_LEVEL', 'info')
+  const adminToken = cli.adminToken ?? getEnv('ROUTER_ADMIN_TOKEN')
+  const requestTimeoutMs = cli.requestTimeoutMs ?? getEnvInt('ROUTER_REQUEST_TIMEOUT_MS', 30_000)
 
   // Load router.config.json (extra providers, denylist, tier assignments, etc.)
-  let routerConfig: RouterConfig = loadRouterConfig()
+  let routerConfig: RouterConfig = loadRouterConfig(routerConfigPath)
 
   // Load and parse OpenClaw config
   const outcome = loadOpenClawConfig(configPath)
@@ -50,10 +72,14 @@ async function main(): Promise<void> {
 
     // Run interactive tier wizard for models that lack explicit tier assignments
     const existingTiers = routerConfig.modelTiers ?? {}
-    const updatedTiers = await runTierWizard(resolvable, existingTiers, DEFAULT_ROUTER_CONFIG_PATH)
+    const updatedTiers = await runTierWizard(
+      resolvable,
+      existingTiers,
+      routerConfigPath ?? DEFAULT_ROUTER_CONFIG_PATH,
+    )
     if (updatedTiers !== existingTiers) {
       // Wizard assigned new tiers — reload routerConfig so changes take effect
-      routerConfig = loadRouterConfig()
+      routerConfig = loadRouterConfig(routerConfigPath)
     }
 
     registry = new ProviderRegistry(models)
@@ -77,6 +103,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err)
+  if (err instanceof Error) {
+    console.error(`[claw-auto-router] ${err.message}`)
+  } else {
+    console.error('Fatal error:', err)
+  }
+  console.error(getHelpText(getCommandName()))
   process.exit(1)
 })

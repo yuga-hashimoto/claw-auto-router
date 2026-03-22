@@ -110,7 +110,113 @@ Only models with a resolved API key appear in `/v1/models` and routing.
 
 ## Quick start
 
-### Local dev
+Pick the path that matches your setup:
+
+- Use `npm` if you already have Node.js 20+
+- Use Docker if you do not want to install Node.js
+
+### Easiest install: npm
+
+If you already use Node.js, the best install UX is a single npm command.
+
+#### Install from GitHub today
+
+This repo is ready for npm-style installation directly from GitHub:
+
+```bash
+npm install -g github:yuga-hashimoto/claw-auto-router
+claw-auto-router --help
+claw-auto-router
+```
+
+`claw-auto-router` automatically reads:
+
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/moltbot.json`
+
+It also installs a short alias:
+
+```bash
+clawr
+```
+
+Useful examples:
+
+```bash
+# Use an explicit OpenClaw config path
+claw-auto-router --config ~/.openclaw/moltbot.json
+
+# Use a custom router config and port
+claw-auto-router --router-config ./router.config.json --port 3001
+```
+
+#### Publish target
+
+If you publish this package to the npm registry later, the install flow becomes:
+
+```bash
+npm install -g claw-auto-router
+claw-auto-router
+```
+
+### No-Node install: Docker Compose
+
+If you want clawr running without installing Node.js locally, use Docker.
+
+#### What you need
+
+- Docker Desktop or Docker Engine + Docker Compose
+- Your OpenClaw config at `~/.openclaw/openclaw.json` or `~/.openclaw/moltbot.json`
+- Provider API keys only if they are **not** already stored in your OpenClaw config
+
+#### 1. Clone and start
+
+```bash
+git clone https://github.com/yuga-hashimoto/claw-auto-router.git
+cd claw-auto-router
+cp .env.example .env
+docker compose up --build -d
+```
+
+`docker-compose.yml` mounts `~/.openclaw` read-only and now loads values from your local `.env` file automatically.
+
+#### 2. Add keys only if needed
+
+Open `.env` and fill in only the provider keys that are missing from your OpenClaw config:
+
+```bash
+ZAI_API_KEY=
+KIMI_CODING_API_KEY=
+GOOGLE_API_KEY=
+OPENROUTER_API_KEY=
+NVIDIA_API_KEY=
+QWEN_PORTAL_TOKEN=
+```
+
+Then restart:
+
+```bash
+docker compose restart
+```
+
+#### 3. Verify it is up
+
+```bash
+curl http://localhost:3000/health
+curl http://localhost:3000/v1/models
+```
+
+If `/v1/models` returns an empty list, clawr found your config but could not resolve any API keys yet.
+
+### Local install: Node.js + pnpm
+
+Use this if you want local development, hot reload, or to modify the code.
+
+#### What you need
+
+- Node.js 20+
+- pnpm
+- Your OpenClaw config at `~/.openclaw/openclaw.json` or `~/.openclaw/moltbot.json`
 
 ```bash
 # Install dependencies
@@ -118,13 +224,22 @@ pnpm install
 
 # Copy env template
 cp .env.example .env
-# Edit .env if needed (add missing provider keys)
+# Edit .env only if you need to add missing provider keys
 
 # Start dev server (prompts tier wizard on first run)
 pnpm dev
 ```
 
 The router starts on `http://localhost:3000` and reads your OpenClaw config automatically.
+
+For a production-style local run:
+
+```bash
+pnpm install
+cp .env.example .env
+pnpm build
+pnpm start
+```
 
 ```bash
 pnpm dev          # Dev server with hot reload

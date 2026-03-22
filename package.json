@@ -4,15 +4,34 @@
   "description": "Self-hosted OpenAI-compatible LLM router that auto-imports providers from your OpenClaw config",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "claw-auto-router": "dist/index.js",
+    "clawr": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    ".env.example"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
+    "prepare": "npm run build",
+    "prepack": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src tests --ext .ts",
     "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuga-hashimoto/claw-auto-router.git"
+  },
+  "homepage": "https://github.com/yuga-hashimoto/claw-auto-router#readme",
+  "bugs": {
+    "url": "https://github.com/yuga-hashimoto/claw-auto-router/issues"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
