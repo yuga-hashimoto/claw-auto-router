@@ -99,7 +99,8 @@ Config discovery order:
 
 From the config it extracts:
 - `models.providers.*` — base URLs, API styles, model definitions
-- OpenClaw agent `models.json` / `models list --json` — implicit configured providers and models such as OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, and Google Antigravity
+- `openclaw models status --json` and `{agentDir}/models.json` — built-in provider/model registry (OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, Google Antigravity, etc.)
+- `openclaw models list --json` — full model catalog with context window and capability metadata
 - `agents.defaults.model.primary` — top-priority model
 - `agents.defaults.model.fallbacks` — fallback chain order
 - `agents.defaults.models.*` — aliases
@@ -226,18 +227,6 @@ claw-auto-router setup
 claw-auto-router
 ```
 
-### Release automation
-
-npm publishing is handled by GitHub Actions trusted publishing in
-[`publish.yml`](./.github/workflows/publish.yml).
-
-- Bump the `version` in `package.json`
-- Register `yuga-hashimoto/claw-auto-router` + `.github/workflows/publish.yml` once as an npm trusted publisher
-- Push to `main` or run the workflow manually from GitHub Actions
-- The workflow runs `pnpm typecheck`, `pnpm test`, and `pnpm build`
-- If that version is not already on npm, it publishes automatically without an npm token
-- The same workflow also creates a `vX.Y.Z` Git tag and GitHub Release with generated release notes
-
 ### No-Node install: Docker Compose
 
 If you want clawr running without installing Node.js locally, use Docker.
@@ -257,7 +246,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-`docker-compose.yml` mounts `~/.openclaw` read-only and now loads values from your local `.env` file automatically.
+`docker-compose.yml` mounts `~/.openclaw` read-only and loads values from your local `.env` file automatically.
 
 #### 2. Add keys only if needed
 
@@ -318,9 +307,8 @@ The router starts on `http://localhost:43123` and reads your OpenClaw config aut
 For a production-style local run:
 
 ```bash
-pnpm install
+pnpm install        # also builds dist/ via prepare hook
 pnpm start -- setup
-pnpm build
 pnpm start
 ```
 
@@ -520,3 +508,17 @@ docker run -p 43123:43123 \
 
 **Wizard doesn't appear**
 → claw-auto-router only runs the wizard when stdin/stdout are TTYs. In Docker or CI, set `modelTiers` in `router.config.json` manually.
+
+---
+
+## Release automation
+
+npm publishing is handled by GitHub Actions trusted publishing in
+[`publish.yml`](./.github/workflows/publish.yml).
+
+- Bump the `version` in `package.json`
+- Register `yuga-hashimoto/claw-auto-router` + `.github/workflows/publish.yml` once as an npm trusted publisher
+- Push to `main` or run the workflow manually from GitHub Actions
+- The workflow runs `pnpm typecheck`, `pnpm test`, and `pnpm build`
+- If that version is not already on npm, it publishes automatically without an npm token
+- The same workflow also creates a `vX.Y.Z` Git tag and GitHub Release with generated release notes
