@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { buildCandidateChain } from '../../../src/router/chain-builder.js'
 import { ProviderRegistry } from '../../../src/providers/registry.js'
 import type { NormalizedModel } from '../../../src/providers/types.js'
