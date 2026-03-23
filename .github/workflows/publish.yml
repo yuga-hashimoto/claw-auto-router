@@ -57,7 +57,18 @@ jobs:
           VERSION="$(npm view "${{ steps.package.outputs.name }}" version 2>/dev/null || true)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Decide whether publish is needed
+      - name: Check existing GitHub Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.package.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide release actions
         id: publish_check
         run: |
           if [ -n "${{ steps.registry.outputs.version }}" ] && [ "${{ steps.package.outputs.version }}" = "${{ steps.registry.outputs.version }}" ]; then
@@ -68,12 +79,20 @@ jobs:
             echo "Publishing ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}"
           fi
 
+          if [ "${{ steps.release.outputs.exists }}" = "true" ]; then
+            echo "should_create_release=false" >> "$GITHUB_OUTPUT"
+            echo "GitHub Release v${{ steps.package.outputs.version }} already exists. Skipping release creation."
+          else
+            echo "should_create_release=true" >> "$GITHUB_OUTPUT"
+            echo "GitHub Release v${{ steps.package.outputs.version }} will be created."
+          fi
+
       - name: Publish to npm
         if: steps.publish_check.outputs.should_publish == 'true'
         run: npm publish
 
       - name: Create GitHub Release
-        if: steps.publish_check.outputs.should_publish == 'true'
+        if: steps.publish_check.outputs.should_create_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.package.outputs.version }}
