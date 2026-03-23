@@ -17,6 +17,15 @@ import { normalizeConfig } from './providers/normalizer.js'
 import { isModelAvailable } from './providers/types.js'
 import { ProviderRegistry } from './providers/registry.js'
 import { buildApp } from './server/app.js'
+import {
+  getBackgroundServiceStatus,
+  installBackgroundService,
+  restartBackgroundService,
+  startBackgroundService,
+  stopBackgroundService,
+  uninstallBackgroundService,
+  type BackgroundServiceStatus,
+} from './service/launchd.js'
 import { runSetup } from './setup/command.js'
 import { runTierWizard } from './wizard/setup.js'
 import { getEnv, getEnvOrDefault, getEnvInt } from './utils/env.js'
@@ -27,6 +36,33 @@ function formatTierSummary(tierCounts: Record<'SIMPLE' | 'STANDARD' | 'COMPLEX' 
 
 function formatPrioritySummary(priorityCounts: Record<'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'CODE', number>): string {
   return `SIMPLE ${priorityCounts.SIMPLE}, STANDARD ${priorityCounts.STANDARD}, COMPLEX ${priorityCounts.COMPLEX}, CODE ${priorityCounts.CODE}`
+}
+
+function printBackgroundServiceStatus(status: BackgroundServiceStatus): void {
+  console.log('[claw-auto-router] Background service')
+  console.log(`  Manager           : ${status.supported ? 'launchd (macOS)' : 'unsupported'}`)
+  console.log(`  Label             : ${status.label}`)
+  console.log(`  LaunchAgent       : ${status.plistPath}`)
+  console.log(`  Installed         : ${status.installed ? 'yes' : 'no'}`)
+  console.log(`  Loaded            : ${status.loaded ? 'yes' : 'no'}`)
+  console.log(`  Running           : ${status.running ? 'yes' : 'no'}`)
+  if (status.pid !== undefined) {
+    console.log(`  PID               : ${status.pid}`)
+  }
+  if (status.command !== undefined) {
+    console.log(`  Command           : ${status.command}`)
+  }
+  console.log(`  Stdout log        : ${status.stdoutPath}`)
+  console.log(`  Stderr log        : ${status.stderrPath}`)
+  if (status.action !== undefined) {
+    console.log(`  Action            : ${status.action}`)
+  }
+  if (status.detail !== undefined) {
+    console.log(`  Detail            : ${status.detail}`)
+  }
+  if (status.error !== undefined) {
+    console.log(`  Error             : ${status.error}`)
+  }
 }
 
 function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
@@ -71,6 +107,10 @@ function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
     console.log(`  Health check      : ${result.routerRuntime.error ?? 'not reachable'}`)
   }
 
+  if (result.backgroundService !== undefined) {
+    printBackgroundServiceStatus(result.backgroundService)
+  }
+
   if (result.backupPath !== undefined) {
     console.log(`[claw-auto-router] Backup created : ${result.backupPath}`)
   }
@@ -81,8 +121,14 @@ function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
   }
 
   console.log('[claw-auto-router] How to test')
-  if (!result.routerRuntime.running) {
+  if (!result.routerRuntime.running && result.backgroundService?.supported !== true) {
     console.log(`  Start router      : ${result.suggestedStartCommand}`)
+  }
+  if (result.backgroundService?.supported === true) {
+    console.log('  Service status    : claw-auto-router service status')
+    if (!result.backgroundService.running) {
+      console.log('  Service start     : claw-auto-router service start')
+    }
   }
   console.log(`  Health check      : curl ${result.routerRuntime.healthUrl}`)
   console.log(`  Model list        : curl ${result.routerRuntime.modelsUrl}`)
@@ -106,6 +152,23 @@ function getRouterSelfRef(routerConfig: RouterConfig): string | undefined {
   }
 
   return `${integration.providerId}/${integration.modelId}`
+}
+
+async function isRouterResponding(port: number): Promise<boolean> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 1_500)
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+    return response.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 async function main(): Promise<void> {
@@ -135,8 +198,45 @@ async function main(): Promise<void> {
     return
   }
 
+  if (cli.command === 'service') {
+    const serviceOptions = {
+      ...(configPath !== undefined ? { configPath } : {}),
+      ...(routerConfigPath !== undefined ? { routerConfigPath } : {}),
+      port,
+      host,
+      logLevel,
+      ...(adminToken !== undefined ? { adminToken } : {}),
+      requestTimeoutMs,
+    }
+
+    const status =
+      cli.serviceAction === 'install'
+        ? installBackgroundService({
+            ...serviceOptions,
+            startMode: (await isRouterResponding(port)) ? 'never' : 'always',
+          })
+        : cli.serviceAction === 'start'
+          ? startBackgroundService()
+          : cli.serviceAction === 'stop'
+            ? stopBackgroundService()
+            : cli.serviceAction === 'restart'
+              ? restartBackgroundService()
+              : cli.serviceAction === 'uninstall'
+                ? uninstallBackgroundService()
+                : getBackgroundServiceStatus()
+
+    printBackgroundServiceStatus(status)
+    return
+  }
+
   if (cli.command === 'setup' || cli.command === 'clean-setup') {
-    const setupOptions: Parameters<typeof runSetup>[0] = { port }
+    const setupOptions: Parameters<typeof runSetup>[0] = {
+      port,
+      host,
+      logLevel,
+      ...(adminToken !== undefined ? { adminToken } : {}),
+      requestTimeoutMs,
+    }
     if (configPath !== undefined) {
       setupOptions.configPath = configPath
     }

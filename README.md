@@ -143,7 +143,6 @@ If you already use Node.js, the best install UX is a single npm command.
 ```bash
 npm install -g claw-auto-router
 claw-auto-router setup
-claw-auto-router
 ```
 
 Make sure your OpenClaw Gateway is running before you expect imported models to route:
@@ -160,6 +159,7 @@ openclaw gateway status
 - shows the current order inside each tier and lets you save explicit priority overrides
 - writes `~/.openclaw/router.config.json`
 - updates your OpenClaw config to point `claw-auto-router/auto` at the local router
+- on macOS, installs and starts a `launchd` background service automatically
 
 If you want to throw away previous claw-auto-router tier assignments and rebuild them from scratch, use:
 
@@ -185,8 +185,12 @@ claw-auto-router clean-setup
 # Use a custom router port during setup
 claw-auto-router setup --port 3001
 
-# Start the router afterward
-claw-auto-router --port 3001
+# Check the background service on macOS
+claw-auto-router service status
+
+# Start or restart the background service manually
+claw-auto-router service start
+claw-auto-router service restart
 ```
 
 See recent routing decisions and why they were chosen:
@@ -194,6 +198,15 @@ See recent routing decisions and why they were chosen:
 ```bash
 claw-auto-router logs --limit 20
 claw-auto-router logs --json
+```
+
+Background service management on macOS:
+
+```bash
+claw-auto-router service install
+claw-auto-router service status
+claw-auto-router service stop
+claw-auto-router service uninstall
 ```
 
 If you want the latest unreleased version straight from GitHub instead:
@@ -287,11 +300,11 @@ pnpm build
 # Run one-time setup against your OpenClaw config
 pnpm start -- setup
 
-# Then start the router
+# Or run the server directly during development
 pnpm dev
 ```
 
-The router starts on `http://localhost:43123` and reads your OpenClaw config automatically.
+The router starts on `http://localhost:43123` and reads your OpenClaw config automatically. On macOS, `setup` also installs a `launchd` agent so the router can keep running in the background after setup.
 
 For a production-style local run:
 

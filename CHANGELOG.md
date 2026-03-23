@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-24
+
+### Added
+- macOS `launchd` background service management via `claw-auto-router service`
+- Automatic background service install/start during `setup` and `clean-setup` on macOS
+- Setup summary now reports background service status and how to verify it
+
+### Fixed
+- Launchd services now resolve Node-based CLI entrypoints correctly instead of failing on `env: node: No such file or directory`
+
 ## [0.4.1] - 2026-03-24
 
 ### Changed
@@ -55,7 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial OpenClaw-compatible model router implementation
 
-[Unreleased]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.4.0...v0.4.1
 [0.3.1]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.2.0...v0.3.0

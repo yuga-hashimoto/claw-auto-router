@@ -64,6 +64,23 @@ describe('parseCliArgs', () => {
     })
   })
 
+  it('parses service mode flags', () => {
+    expect(parseCliArgs(['service', 'install', '--port', '43123'])).toEqual({
+      command: 'service',
+      serviceAction: 'install',
+      help: false,
+      port: 43123,
+    })
+  })
+
+  it('defaults service mode to status', () => {
+    expect(parseCliArgs(['service'])).toEqual({
+      command: 'service',
+      serviceAction: 'status',
+      help: false,
+    })
+  })
+
   it('throws for invalid integer values', () => {
     expect(() => parseCliArgs(['--port', 'abc'])).toThrow(
       'Invalid value for --port: expected an integer, received "abc"',
@@ -83,6 +100,7 @@ describe('getHelpText', () => {
     expect(helpText).toContain('setup')
     expect(helpText).toContain('clean-setup')
     expect(helpText).toContain('logs')
+    expect(helpText).toContain('service <install|start|stop|restart|status|uninstall>')
     expect(helpText).toContain('--config <path>')
     expect(helpText).toContain('--router-config <path>')
   })

@@ -2,7 +2,8 @@ import { parseArgs } from 'node:util'
 import { DEFAULT_PORT } from './defaults.js'
 
 export interface CliOptions {
-  command: 'serve' | 'setup' | 'clean-setup' | 'logs'
+  command: 'serve' | 'setup' | 'clean-setup' | 'logs' | 'service'
+  serviceAction?: 'install' | 'start' | 'stop' | 'restart' | 'status' | 'uninstall'
   help: boolean
   configPath?: string
   routerConfigPath?: string
@@ -83,6 +84,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
 
   const rawCommand = positionals[0]
   let command: CliOptions['command'] = 'serve'
+  let serviceAction: CliOptions['serviceAction']
   if (rawCommand !== undefined) {
     if (rawCommand === 'setup') {
       command = 'setup'
@@ -90,6 +92,23 @@ export function parseCliArgs(argv: string[]): CliOptions {
       command = 'clean-setup'
     } else if (rawCommand === 'logs') {
       command = 'logs'
+    } else if (rawCommand === 'service') {
+      command = 'service'
+      const rawServiceAction = positionals[1]
+      if (rawServiceAction === undefined) {
+        serviceAction = 'status'
+      } else if (
+        rawServiceAction === 'install' ||
+        rawServiceAction === 'start' ||
+        rawServiceAction === 'stop' ||
+        rawServiceAction === 'restart' ||
+        rawServiceAction === 'status' ||
+        rawServiceAction === 'uninstall'
+      ) {
+        serviceAction = rawServiceAction
+      } else {
+        throw new Error(`Unknown service action "${rawServiceAction}"`)
+      }
     } else if (rawCommand === 'serve' || rawCommand === 'start') {
       command = 'serve'
     } else {
@@ -97,12 +116,14 @@ export function parseCliArgs(argv: string[]): CliOptions {
     }
   }
 
-  if (positionals.length > 1) {
+  const maxPositionals = command === 'service' ? 2 : 1
+  if (positionals.length > maxPositionals) {
     throw new Error(`Unexpected extra arguments: ${positionals.slice(1).join(' ')}`)
   }
 
   const options: CliOptions = {
     command,
+    ...(serviceAction !== undefined ? { serviceAction } : {}),
     help: values.help ?? false,
   }
 
@@ -168,13 +189,15 @@ Usage:
   ${commandName} setup [options]
   ${commandName} clean-setup [options]
   ${commandName} logs [options]
+  ${commandName} service <install|start|stop|restart|status|uninstall> [options]
 
 Commands:
   setup                            Detect OpenClaw config, ask for model tiers,
-                                   and wire OpenClaw to use ${commandName}
+                                   wire OpenClaw to use ${commandName}, and start a background service on macOS
   clean-setup                      Rebuild claw-auto-router settings from scratch
                                    and replace existing tier assignments
   logs                             Show recent routing decisions and why they routed that way
+  service                          Manage the macOS launchd background service
 
 Common options:
   -h, --help                       Show this help message
@@ -194,6 +217,8 @@ Common options:
 Examples:
   ${commandName} setup
   ${commandName} clean-setup
+  ${commandName} service install
+  ${commandName} service status
   ${commandName} setup --config ~/.openclaw/moltbot.json
   ${commandName} logs --limit 20
   ${commandName} logs --json

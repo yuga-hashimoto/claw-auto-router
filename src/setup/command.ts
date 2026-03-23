@@ -28,6 +28,11 @@ import {
   type TierPriorityPrompt,
 } from '../wizard/setup.js'
 import { DEFAULT_BASE_URL, DEFAULT_PORT } from '../defaults.js'
+import {
+  getBackgroundServiceStatus,
+  installBackgroundService,
+  type BackgroundServiceStatus,
+} from '../service/launchd.js'
 
 const DEFAULT_PROVIDER_ID = 'claw-auto-router'
 const DEFAULT_MODEL_ID = 'auto'
@@ -40,6 +45,11 @@ export interface SetupOptions {
   providerId?: string
   modelId?: string
   port?: number
+  host?: string
+  logLevel?: string
+  adminToken?: string
+  requestTimeoutMs?: number
+  manageService?: boolean
   resetExisting?: boolean
 }
 
@@ -80,6 +90,7 @@ export interface SetupResult {
     resolvableModels?: number
     error?: string
   }
+  backgroundService?: BackgroundServiceStatus
 }
 
 interface UpstreamSelection {
@@ -519,6 +530,9 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   const providerId = options.providerId ?? DEFAULT_PROVIDER_ID
   const modelId = options.modelId ?? DEFAULT_MODEL_ID
   const port = options.port ?? DEFAULT_PORT
+  const host = options.host ?? '0.0.0.0'
+  const logLevel = options.logLevel ?? 'info'
+  const requestTimeoutMs = options.requestTimeoutMs ?? 30_000
   const baseUrl = options.baseUrl ?? (port === DEFAULT_PORT ? DEFAULT_BASE_URL : `http://127.0.0.1:${port}`)
   const routerRef = toRouterRef(providerId, modelId)
   const routerConfigPath = resolveRouterConfigPath(options.routerConfigPath, outcome.path)
@@ -614,7 +628,37 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   })
   const { backupPath } = writeOpenClawConfig(outcome.path, updatedOpenClawConfig)
   const observedOpenClawState = readObservedOpenClawState(outcome.path)
-  const routerRuntime = await probeRouterRuntime(baseUrl)
+  const runtimeBeforeService = await probeRouterRuntime(baseUrl)
+  const existingBackgroundService = getBackgroundServiceStatus()
+  let backgroundService: BackgroundServiceStatus | undefined
+
+  if (options.manageService !== false && existingBackgroundService.supported) {
+    try {
+      const shouldStartService = existingBackgroundService.running || !runtimeBeforeService.running
+      backgroundService = installBackgroundService({
+        configPath: outcome.path,
+        routerConfigPath,
+        port,
+        host,
+        logLevel,
+        ...(options.adminToken !== undefined ? { adminToken: options.adminToken } : {}),
+        requestTimeoutMs,
+        startMode: shouldStartService ? 'always' : 'never',
+      })
+    } catch (error) {
+      backgroundService = {
+        ...existingBackgroundService,
+        error: error instanceof Error ? error.message : 'Could not install the background service',
+      }
+    }
+  } else if (existingBackgroundService.supported) {
+    backgroundService = existingBackgroundService
+  }
+
+  const routerRuntime =
+    backgroundService?.running === true || backgroundService?.action !== undefined
+      ? await probeRouterRuntime(baseUrl)
+      : runtimeBeforeService
   const routerProvider = updatedOpenClawConfig.models?.providers?.[providerId]
   const updatedPrimary = updatedOpenClawConfig.agents?.defaults?.model?.primary ?? routerRef
   const updatedFallbacks = updatedOpenClawConfig.agents?.defaults?.model?.fallbacks ?? []
@@ -647,5 +691,6 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
     ...(observedOpenClawState !== undefined ? { openClawObservedState: observedOpenClawState } : {}),
     routerConfigSummary,
     routerRuntime,
+    ...(backgroundService !== undefined ? { backgroundService } : {}),
   }
 }
