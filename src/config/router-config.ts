@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { z } from 'zod'
+import { DEFAULT_BASE_URL } from '../defaults.js'
 import { resolveUserPath } from '../utils/paths.js'
 
 const ApiStyleSchema = z.enum([
@@ -44,7 +45,7 @@ const RoutingTierSchema = z.enum(['SIMPLE', 'STANDARD', 'COMPLEX', 'CODE'])
 const OpenClawIntegrationSchema = z.object({
   providerId: z.string().default('claw-auto-router'),
   modelId: z.string().default('auto'),
-  baseUrl: z.string().default('http://127.0.0.1:3000'),
+  baseUrl: z.string().default(DEFAULT_BASE_URL),
   upstreamPrimary: z.string().optional(),
   upstreamFallbacks: z.array(z.string()).optional(),
 })

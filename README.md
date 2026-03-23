@@ -26,7 +26,7 @@ OpenClaw (Discord bot)
     │
     │  POST /v1/chat/completions
     ▼
-claw-auto-router  (this project, port 3000)
+claw-auto-router  (this project, port 43123)
     │
     ├── Config loader      reads ~/.openclaw/moltbot.json (or openclaw.json)
     ├── Provider registry   normalizes providers/models
@@ -214,6 +214,7 @@ npm publishing is handled by GitHub Actions trusted publishing in
 - Push to `main` or run the workflow manually from GitHub Actions
 - The workflow runs `pnpm typecheck`, `pnpm test`, and `pnpm build`
 - If that version is not already on npm, it publishes automatically without an npm token
+- The same workflow also creates a `vX.Y.Z` Git tag and GitHub Release with generated release notes
 
 ### No-Node install: Docker Compose
 
@@ -258,8 +259,8 @@ docker compose restart
 #### 3. Verify it is up
 
 ```bash
-curl http://localhost:3000/health
-curl http://localhost:3000/v1/models
+curl http://localhost:43123/health
+curl http://localhost:43123/v1/models
 ```
 
 If `/v1/models` returns an empty list:
@@ -290,7 +291,7 @@ pnpm start -- setup
 pnpm dev
 ```
 
-The router starts on `http://localhost:3000` and reads your OpenClaw config automatically.
+The router starts on `http://localhost:43123` and reads your OpenClaw config automatically.
 
 For a production-style local run:
 
@@ -363,12 +364,12 @@ OpenAI-compatible chat completions.
 
 ```bash
 # Auto-routing
-curl -X POST http://localhost:3000/v1/chat/completions \
+curl -X POST http://localhost:43123/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'
 
 # Explicit model
-curl -X POST http://localhost:3000/v1/chat/completions \
+curl -X POST http://localhost:43123/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"nvidia/qwen/qwen3.5-397b-a17b","messages":[{"role":"user","content":"Explain neural networks"}]}'
 ```
@@ -390,10 +391,10 @@ Routing stats: requests, per-model counts, fallback rate, average latency, confi
 Reload OpenClaw config without restart. Atomically replaces the routing pool.
 
 ```bash
-curl -X POST http://localhost:3000/reload-config
+curl -X POST http://localhost:43123/reload-config
 
 # With admin token:
-curl -X POST http://localhost:3000/reload-config \
+curl -X POST http://localhost:43123/reload-config \
   -H "Authorization: Bearer your-token"
 ```
 
@@ -410,7 +411,7 @@ Add to your `moltbot.json` (or `openclaw.json`):
   "models": {
     "providers": {
       "claw-auto-router": {
-        "baseUrl": "http://localhost:3000",
+        "baseUrl": "http://localhost:43123",
         "apiKey": "any-value",
         "api": "openai-completions",
         "models": [
@@ -443,7 +444,7 @@ Set your agent model to `claw-auto-router/auto`. OpenClaw sends chat completions
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3000` | HTTP port |
+| `PORT` | `43123` | HTTP port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `LOG_LEVEL` | `info` | `trace\|debug\|info\|warn\|error` |
 | `OPENCLAW_CONFIG_PATH` | auto-detect | Override config path |
@@ -467,7 +468,7 @@ docker compose up
 
 # Manual run (mounts your OpenClaw config read-only)
 docker build -t claw-auto-router .
-docker run -p 3000:3000 \
+docker run -p 43123:43123 \
   -v ~/.openclaw:/root/.openclaw:ro \
   -e ZAI_API_KEY=your-key \
   claw-auto-router

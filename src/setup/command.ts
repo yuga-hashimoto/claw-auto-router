@@ -27,6 +27,7 @@ import {
   type TierPriorityMap,
   type TierPriorityPrompt,
 } from '../wizard/setup.js'
+import { DEFAULT_BASE_URL, DEFAULT_PORT } from '../defaults.js'
 
 const DEFAULT_PROVIDER_ID = 'claw-auto-router'
 const DEFAULT_MODEL_ID = 'auto'
@@ -171,13 +172,13 @@ function buildSuggestedStartCommand(port: number, baseUrl: string): string {
         : Number.parseInt(parsed.port, 10)
 
     if (isLocalHost && effectivePort === port) {
-      return port === 3000 ? 'claw-auto-router' : `claw-auto-router --port ${port}`
+      return port === DEFAULT_PORT ? 'claw-auto-router' : `claw-auto-router --port ${port}`
     }
   } catch {
     // Fall back to the local port-based suggestion below.
   }
 
-  return port === 3000 ? 'claw-auto-router' : `claw-auto-router --port ${port}`
+  return port === DEFAULT_PORT ? 'claw-auto-router' : `claw-auto-router --port ${port}`
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -517,8 +518,8 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
 
   const providerId = options.providerId ?? DEFAULT_PROVIDER_ID
   const modelId = options.modelId ?? DEFAULT_MODEL_ID
-  const port = options.port ?? 3000
-  const baseUrl = options.baseUrl ?? `http://127.0.0.1:${port}`
+  const port = options.port ?? DEFAULT_PORT
+  const baseUrl = options.baseUrl ?? (port === DEFAULT_PORT ? DEFAULT_BASE_URL : `http://127.0.0.1:${port}`)
   const routerRef = toRouterRef(providerId, modelId)
   const routerConfigPath = resolveRouterConfigPath(options.routerConfigPath, outcome.path)
   const existingRouterConfig = loadRouterConfig(routerConfigPath, outcome.path)

@@ -12,7 +12,7 @@ body:
     attributes:
       label: What happened?
       description: A clear description of the bug.
-      placeholder: When I run `clawr --port 3000`, the server crashes with...
+      placeholder: When I run `clawr --port 43123`, the server crashes with...
     validations:
       required: true
 

@@ -4,9 +4,9 @@ services:
     env_file:
       - .env
     ports:
-      - "3000:3000"
+      - "43123:43123"
     environment:
-      PORT: 3000
+      PORT: 43123
       HOST: 0.0.0.0
       LOG_LEVEL: info
       NODE_ENV: production
@@ -21,7 +21,7 @@ services:
       - "${HOME}/.openclaw:/root/.openclaw:ro"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:43123/health"]
       interval: 30s
       timeout: 5s
       retries: 3

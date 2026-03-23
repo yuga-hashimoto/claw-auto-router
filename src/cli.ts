@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util'
+import { DEFAULT_PORT } from './defaults.js'
 
 export interface CliOptions {
   command: 'serve' | 'setup' | 'clean-setup' | 'logs'
@@ -181,7 +182,7 @@ Common options:
       --router-config <path>      Path to router.config.json
       --limit <number>            How many routing decisions to show in logs mode
       --json                      Print logs as JSON in logs mode
-  -p, --port <number>             HTTP port (default: 3000)
+  -p, --port <number>             HTTP port (default: ${DEFAULT_PORT})
       --base-url <url>            Base URL written into OpenClaw during setup
       --provider-id <id>          Provider id written into OpenClaw during setup
       --model-id <id>             Model id written into OpenClaw during setup

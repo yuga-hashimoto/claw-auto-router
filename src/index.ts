@@ -6,6 +6,7 @@ import { loadOpenClawConfig } from './config/loader.js'
 import { loadRouterConfig, resolveRouterConfigPath } from './config/router-config.js'
 import type { RouterConfig } from './config/router-config.js'
 import { readDecisionLogEntries, renderDecisionLogEntries } from './decision-log.js'
+import { DEFAULT_PORT } from './defaults.js'
 import {
   augmentConfigWithOpenClawDiscovery,
   filterUnsupportedProviderWarnings,
@@ -98,6 +99,15 @@ function getCommandName(): string {
   return invoked
 }
 
+function getRouterSelfRef(routerConfig: RouterConfig): string | undefined {
+  const integration = routerConfig.openClawIntegration
+  if (integration === undefined) {
+    return undefined
+  }
+
+  return `${integration.providerId}/${integration.modelId}`
+}
+
 async function main(): Promise<void> {
   const cli = parseCliArgs(process.argv.slice(2))
   const commandName = getCommandName()
@@ -109,7 +119,7 @@ async function main(): Promise<void> {
 
   const configPath = cli.configPath ?? getEnv('OPENCLAW_CONFIG_PATH')
   const routerConfigPath = cli.routerConfigPath
-  const port = cli.port ?? getEnvInt('PORT', 3000)
+  const port = cli.port ?? getEnvInt('PORT', DEFAULT_PORT)
   const host = cli.host ?? getEnvOrDefault('HOST', '0.0.0.0')
   const logLevel = cli.logLevel ?? getEnvOrDefault('LOG_LEVEL', 'info')
   const adminToken = cli.adminToken ?? getEnv('ROUTER_ADMIN_TOKEN')
@@ -180,7 +190,10 @@ async function main(): Promise<void> {
       gatewayBackedProviderIds,
       gatewayAvailable: gatewayContext.available,
     })
-    const visibleWarnings = filterUnsupportedProviderWarnings(warnings, discoveryWarnings)
+    const routerSelfRef = getRouterSelfRef(routerConfig)
+    const visibleWarnings = filterUnsupportedProviderWarnings(warnings, discoveryWarnings).filter(
+      (warning) => routerSelfRef === undefined || !warning.startsWith(`Phantom ref "${routerSelfRef}"`),
+    )
 
     for (const w of gatewayBackedProviderIds.length > 0 ? gatewayContext.warnings : []) {
       console.warn(`[claw-auto-router] ${w}`)

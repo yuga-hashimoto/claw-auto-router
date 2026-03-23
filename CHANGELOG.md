@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-24
+
+### Changed
+- Default local router port is now `43123` to avoid common port collisions on developer machines
+- Docker and setup documentation now use the new default port consistently
+
+### Fixed
+- Suppress the self-reference warning for `claw-auto-router/auto` during normal startup
+- Publish workflow now creates a GitHub Release alongside npm publishing
+
 ## [0.3.1] - 2025-03-23
 
 ### Added
@@ -45,7 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial OpenClaw-compatible model router implementation
 
-[Unreleased]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.4.0...v0.4.1
 [0.3.1]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.1.0...v0.2.0
