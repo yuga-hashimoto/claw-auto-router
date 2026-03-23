@@ -107,10 +107,14 @@ export function buildDecisionLogEntry(input: {
 }
 
 function renderDecisionLogEntry(entry: RoutingDecisionLogEntry): string {
+  const classifierSource =
+    entry.classification.mode === 'ai'
+      ? `RouterAI${entry.classification.classifierModelId !== undefined ? ` (${entry.classification.classifierModelId})` : ''}`
+      : 'Heuristic'
   const lines = [
     `[${entry.timestamp}] ${entry.success ? 'SUCCESS' : 'FAILED'} request=${entry.requestId} tier=${entry.classification.tier} requested=${entry.requestedModel} resolved=${entry.resolvedModel}`,
     `Message: ${entry.classification.lastUserMessage === '' ? '(no user text)' : entry.classification.lastUserMessage}`,
-    `Classifier: ${entry.classification.reasons.join('; ')} | approx ${entry.classification.totalTokens} tokens across ${entry.messageCount} messages`,
+    `Classifier: ${classifierSource} | ${entry.classification.reasons.join('; ')} | approx ${entry.classification.totalTokens} tokens across ${entry.messageCount} messages`,
   ]
 
   if (entry.candidates.length > 0) {

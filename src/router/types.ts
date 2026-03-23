@@ -1,12 +1,15 @@
 import type { NormalizedModel } from '../providers/types.js'
 
 export type RoutingTier = 'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'CODE'
+export type ClassificationMode = 'heuristic' | 'ai'
 
 export interface ClassificationDetail {
   tier: RoutingTier
   totalTokens: number
   lastUserMessage: string
   reasons: string[]
+  mode: ClassificationMode
+  classifierModelId?: string | undefined
 }
 
 export interface CandidateDecisionDetail {

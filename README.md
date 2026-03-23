@@ -13,7 +13,7 @@ OpenClaw lets you configure multiple LLM providers and run agents across them. B
 claw-auto-router:
 - Reads your existing OpenClaw config (zero duplication)
 - Exposes an OpenAI-compatible API so OpenClaw treats it like a normal provider
-- Routes requests to the most suitable model based on content (tier-based heuristics + explicit assignments)
+- Routes requests to the most suitable model based on content (tier-based heuristics or optional RouterAI classification + explicit assignments)
 - Falls back automatically when a provider fails
 - Delegates imported OpenClaw models back through the OpenClaw Gateway instead of reimplementing provider OAuth here
 
@@ -39,7 +39,7 @@ claw-auto-router  (this project, port 43123)
 
 ### Routing tiers
 
-Each request is classified into one of four tiers. claw-auto-router then picks the best model for that tier:
+Each request is classified into one of four tiers. By default this is done with deterministic heuristics; during `claw-auto-router setup` you can optionally enable `RouterAI`, which asks a dedicated model to choose the tier before routing. claw-auto-router then picks the best model for that tier:
 
 | Tier | Triggers | Preferred model traits |
 |------|----------|------------------------|
@@ -48,7 +48,13 @@ Each request is classified into one of four tiers. claw-auto-router then picks t
 | SIMPLE | short greetings, simple Q&A, < 200 tokens | fast, cheap |
 | STANDARD | everything else | config order |
 
-**Explicit tier assignments** (set via `claw-auto-router setup` or `router.config.json`) always override heuristics.
+**Explicit tier assignments** (set via `claw-auto-router setup` or `router.config.json`) always override automatic scoring.
+
+Heuristics vs RouterAI:
+
+- `Heuristic` is faster, deterministic, and adds no extra model call. This is the safest default.
+- `RouterAI` can do better on ambiguous prompts, but every auto-routed request pays for one small classifier call first.
+- If RouterAI fails, claw-auto-router automatically falls back to heuristics for that request.
 
 ---
 
@@ -78,6 +84,8 @@ During `claw-auto-router setup`, claw-auto-router prompts you to classify any mo
 ```
 
 Assignments are saved to `~/.openclaw/router.config.json` by default (or next to the config file you target with `--config`) and take effect immediately.
+
+The setup wizard also asks whether you want to keep deterministic heuristics or enable RouterAI, and if you choose RouterAI it lets you pick the classifier model to use.
 
 ---
 
@@ -157,6 +165,7 @@ openclaw gateway status
 - imports the current OpenClaw model catalog, including built-in configured providers like OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, and Google Antigravity
 - asks you to assign tiers to your current models
 - shows the current order inside each tier and lets you save explicit priority overrides
+- asks whether routing decisions should stay heuristic or use RouterAI, and lets you pick the classifier model
 - writes `~/.openclaw/router.config.json`
 - updates your OpenClaw config to point `claw-auto-router/auto` at the local router
 - on macOS, installs and starts a `launchd` background service automatically
@@ -347,6 +356,11 @@ Example:
     "CODE": ["kimi-coding/k2p5", "nvidia/qwen/qwen3.5-397b-a17b"],
     "SIMPLE": ["google/gemini-flash"]
   },
+  "routerAI": {
+    "mode": "ai",
+    "model": "google/gemini-3-flash-preview",
+    "timeoutMs": 8000
+  },
   "extraProviders": {
     "openrouter": {
       "baseUrl": "https://openrouter.ai/api/v1",
@@ -362,6 +376,7 @@ Example:
 |-------|-------------|
 | `modelTiers` | Explicit tier per model — overrides heuristic scoring. Set by setup wizard. |
 | `tierPriority` | Preferred model order within each tier (explicit beats score). Setup wizard can write this too. |
+| `routerAI` | Optional AI classifier for tier decisions. If it fails, routing falls back to heuristics automatically. |
 | `extraProviders` | Providers not in your OpenClaw config (e.g. openrouter, openai-codex, google-gemini-cli) |
 | `denylist` | Models to exclude from routing |
 

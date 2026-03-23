@@ -93,6 +93,14 @@ function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
   console.log(`  Tier assignments  : ${result.routerConfigSummary.totalAssigned}`)
   console.log(`  Tier breakdown    : ${formatTierSummary(result.routerConfigSummary.tierCounts)}`)
   console.log(`  Priority rules    : ${formatPrioritySummary(result.routerConfigSummary.priorityCounts)}`)
+  console.log(
+    `  Routing mode      : ${
+      result.routerConfigSummary.classificationMode === 'ai' ? 'RouterAI classifier' : 'Deterministic heuristics'
+    }`,
+  )
+  if (result.routerConfigSummary.routerAIModel !== undefined) {
+    console.log(`  RouterAI model    : ${result.routerConfigSummary.routerAIModel}`)
+  }
 
   console.log('[claw-auto-router] Router runtime')
   console.log(`  Running now       : ${result.routerRuntime.running ? 'yes' : 'no'}`)

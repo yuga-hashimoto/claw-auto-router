@@ -23,8 +23,9 @@ export function route(
   config: RawConfig,
   registry: ProviderRegistry,
   routerConfig?: RouterConfig,
+  classificationOverride?: ReturnType<typeof classifyRequestDetailed>,
 ): RouteResult {
-  const classification = classifyRequestDetailed(request)
+  const classification = classificationOverride ?? classifyRequestDetailed(request)
   const candidates = buildCandidateChain(request.model, config, registry, classification.tier, routerConfig)
 
   if (candidates.length === 0) {

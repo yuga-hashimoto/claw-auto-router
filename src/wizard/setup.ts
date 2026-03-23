@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline/promises'
+import type { RouterAIConfig, RoutingClassificationMode } from '../config/router-config.js'
 import type { NormalizedModel } from '../providers/types.js'
 import type { RoutingTier } from '../router/types.js'
 import { loadRouterConfig, saveRouterConfig } from '../config/router-config.js'
@@ -46,6 +47,12 @@ export interface TierPriorityPrompt {
   models: NormalizedModel[]
   existingPriorityIds: string[]
   orderSource: 'automatic' | 'explicit'
+}
+
+export interface RouterAIPrompt {
+  current?: RouterAIConfig | undefined
+  recommendedModelId?: string | undefined
+  models: NormalizedModel[]
 }
 
 /**
@@ -239,6 +246,127 @@ export async function runTierPriorityWizard(
   rl.close()
 
   return pruneTierPriority(nextPriority)
+}
+
+export async function runRouterAIWizard(
+  prompt: RouterAIPrompt,
+  options?: { interactive?: boolean | undefined },
+): Promise<RouterAIConfig | undefined> {
+  if (options?.interactive !== true) {
+    return prompt.current?.mode === 'ai' ? prompt.current : undefined
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return prompt.current?.mode === 'ai' ? prompt.current : undefined
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  const currentMode: RoutingClassificationMode = prompt.current?.mode ?? 'heuristic'
+
+  console.log('┌──────────────────────────────────────────────────────────────┐')
+  console.log('│         claw-auto-router — Routing Strategy Wizard          │')
+  console.log('├──────────────────────────────────────────────────────────────┤')
+  console.log('│  Choose how requests are classified into routing tiers.     │')
+  console.log('│  RouterAI adds one extra model call before auto-routing.    │')
+  console.log('└──────────────────────────────────────────────────────────────┘')
+  console.log()
+  console.log(`  Current  : ${currentMode === 'ai' ? 'RouterAI classifier' : 'Deterministic heuristics'}`)
+  if (prompt.current?.mode === 'ai' && prompt.current.model !== undefined) {
+    console.log(`  Model    : ${prompt.current.model}`)
+  }
+  console.log()
+  console.log('    1) Heuristic   Fast, deterministic, no extra model call (Recommended)')
+  console.log('    2) RouterAI    Better on ambiguous prompts, but costs one small classifier request')
+  console.log()
+
+  let mode: RoutingClassificationMode = currentMode
+  while (true) {
+    const raw = (await rl.question(`  Choice [1-2, Enter=${currentMode === 'ai' ? '2' : '1'}]: `)).trim()
+    if (raw === '') {
+      break
+    }
+
+    if (raw === '1') {
+      mode = 'heuristic'
+      break
+    }
+
+    if (raw === '2') {
+      mode = 'ai'
+      break
+    }
+
+    console.log('  Please enter 1 or 2.')
+  }
+
+  if (mode === 'heuristic') {
+    console.log('  ✓ Using deterministic heuristics for routing tier classification')
+    console.log()
+    rl.close()
+    return undefined
+  }
+
+  if (prompt.models.length === 0) {
+    console.log('  → No classifier-capable models were available, so heuristics will stay enabled.')
+    console.log()
+    rl.close()
+    return undefined
+  }
+
+  const defaultModelId =
+    (prompt.current?.mode === 'ai' ? prompt.current.model : undefined) ??
+    prompt.recommendedModelId ??
+    prompt.models[0]?.id
+
+  const defaultIndex = Math.max(
+    0,
+    prompt.models.findIndex((model) => model.id === defaultModelId),
+  )
+
+  console.log('  Choose the model that should classify each auto-routed request.')
+  console.log('  A fast, general-purpose model is usually best here.')
+  console.log()
+
+  for (const [index, model] of prompt.models.entries()) {
+    const recommended = model.id === prompt.recommendedModelId ? '  (Recommended)' : ''
+    console.log(`    ${index + 1}) ${model.name} (${model.id})${recommended}`)
+  }
+  console.log()
+
+  let selectedModel = prompt.models[defaultIndex]
+  while (selectedModel === undefined) {
+    const raw = (await rl.question(`  Classifier model [1-${prompt.models.length}, Enter=${defaultIndex + 1}]: `)).trim()
+    if (raw === '') {
+      selectedModel = prompt.models[defaultIndex]
+      break
+    }
+
+    const index = Number.parseInt(raw, 10)
+    if (!Number.isNaN(index) && `${index}` === raw && index >= 1 && index <= prompt.models.length) {
+      selectedModel = prompt.models[index - 1]
+      break
+    }
+
+    console.log(`  Please enter a number from 1 to ${prompt.models.length}.`)
+  }
+
+  const finalSelection = selectedModel ?? prompt.models[defaultIndex] ?? prompt.models[0]
+  if (finalSelection === undefined) {
+    console.log('  → No classifier model could be selected, so heuristics will stay enabled.')
+    console.log()
+    rl.close()
+    return undefined
+  }
+
+  console.log(`  ✓ RouterAI will classify requests with ${finalSelection.id}`)
+  console.log()
+  rl.close()
+
+  return {
+    mode: 'ai',
+    model: finalSelection.id,
+    timeoutMs: prompt.current?.timeoutMs ?? 8_000,
+  }
 }
 
 export function parsePrioritySelectionInput(raw: string, maxPosition: number): number[] | undefined {

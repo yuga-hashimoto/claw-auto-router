@@ -6,7 +6,7 @@ import { appendDecisionLogEntry, buildDecisionLogEntry } from '../../decision-lo
 import type { OpenClawGatewayContext } from '../../openclaw/gateway.js'
 import type { ProviderRegistry } from '../../providers/registry.js'
 import type { StatsCollector } from '../../stats/collector.js'
-import { classifyRequestDetailed } from '../../router/classifier.js'
+import { resolveClassificationDetail } from '../../router/classifier-resolver.js'
 import { route } from '../../router/router.js'
 import { executeWithFallback } from '../../proxy/fallback.js'
 import type { AdapterRequest } from '../../adapters/types.js'
@@ -66,10 +66,16 @@ export function registerChatCompletionsRoute(
     const routerConfig = context.getRouterConfig()
     const gatewayContext = context.getGatewayContext()
     const decisionLogEnabled = context.getDecisionLogEnabled()
-    const classification = classifyRequestDetailed({
-      model: body.model,
-      messages: body.messages as OpenAIMessage[],
-      stream: body.stream,
+    const classification = await resolveClassificationDetail({
+      request: {
+        model: body.model,
+        messages: body.messages as OpenAIMessage[],
+        stream: body.stream,
+      },
+      registry,
+      routerConfig,
+      gatewayContext,
+      ...(configPath !== undefined ? { openClawConfigPath: configPath } : {}),
     })
 
     const routingRequest = {
@@ -83,7 +89,7 @@ export function registerChatCompletionsRoute(
       | undefined
 
     try {
-      routeResult = route(routingRequest, config, registry, routerConfig)
+      routeResult = route(routingRequest, config, registry, routerConfig, classification)
 
       app.log.debug(
         {

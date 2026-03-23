@@ -41,6 +41,13 @@ const ExtraProviderSchema = z.object({
 })
 
 const RoutingTierSchema = z.enum(['SIMPLE', 'STANDARD', 'COMPLEX', 'CODE'])
+const RoutingClassificationModeSchema = z.enum(['heuristic', 'ai'])
+
+const RouterAIConfigSchema = z.object({
+  mode: RoutingClassificationModeSchema.default('heuristic'),
+  model: z.string().optional(),
+  timeoutMs: z.number().int().positive().max(60_000).default(8_000),
+})
 
 const OpenClawIntegrationSchema = z.object({
   providerId: z.string().default('claw-auto-router'),
@@ -97,11 +104,22 @@ const RouterConfigSchema = z.object({
    * the original upstream primary/fallback chain and avoids routing to itself.
    */
   openClawIntegration: OpenClawIntegrationSchema.optional(),
+
+  /**
+   * Optional AI-assisted tier classifier.
+   *
+   * When enabled, claw-auto-router will ask this model to choose a routing tier
+   * before ranking candidates. If the classifier call fails, routing falls back
+   * to deterministic heuristics automatically.
+   */
+  routerAI: RouterAIConfigSchema.optional(),
 })
 
 export type RouterConfig = z.infer<typeof RouterConfigSchema>
 export type ExtraProvider = z.infer<typeof ExtraProviderSchema>
 export type OpenClawIntegration = z.infer<typeof OpenClawIntegrationSchema>
+export type RouterAIConfig = z.infer<typeof RouterAIConfigSchema>
+export type RoutingClassificationMode = z.infer<typeof RoutingClassificationModeSchema>
 
 export const DEFAULT_ROUTER_CONFIG_PATH = join(homedir(), '.openclaw', 'router.config.json')
 

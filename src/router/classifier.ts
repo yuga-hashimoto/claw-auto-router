@@ -72,6 +72,7 @@ export function classifyRequestDetailed(request: RoutingRequest): Classification
       totalTokens,
       lastUserMessage: lastUserMsg,
       reasons,
+      mode: 'heuristic',
     }
   }
 
@@ -88,6 +89,7 @@ export function classifyRequestDetailed(request: RoutingRequest): Classification
       totalTokens,
       lastUserMessage: lastUserMsg,
       reasons,
+      mode: 'heuristic',
     }
   }
 
@@ -108,6 +110,7 @@ export function classifyRequestDetailed(request: RoutingRequest): Classification
       totalTokens,
       lastUserMessage: lastUserMsg,
       reasons,
+      mode: 'heuristic',
     }
   }
 
@@ -116,5 +119,6 @@ export function classifyRequestDetailed(request: RoutingRequest): Classification
     totalTokens,
     lastUserMessage: lastUserMsg,
     reasons: ['No specific CODE, COMPLEX, or SIMPLE rule matched; using STANDARD'],
+    mode: 'heuristic',
   }
 }

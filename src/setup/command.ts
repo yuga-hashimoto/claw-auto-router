@@ -7,7 +7,9 @@ import {
   loadRouterConfig,
   resolveRouterConfigPath,
   saveRouterConfig,
+  type RouterAIConfig,
   type RouterConfig,
+  type RoutingClassificationMode,
   type OpenClawIntegration,
 } from '../config/router-config.js'
 import {
@@ -22,8 +24,10 @@ import { buildCandidateChain } from '../router/chain-builder.js'
 import type { RoutingTier } from '../router/types.js'
 import { resolveUserPath } from '../utils/paths.js'
 import {
+  runRouterAIWizard,
   runTierPriorityWizard,
   runTierWizard,
+  type RouterAIPrompt,
   type TierPriorityMap,
   type TierPriorityPrompt,
 } from '../wizard/setup.js'
@@ -80,6 +84,8 @@ export interface SetupResult {
     totalAssigned: number
     tierCounts: Record<RoutingTier, number>
     priorityCounts: Record<RoutingTier, number>
+    classificationMode: RoutingClassificationMode
+    routerAIModel?: string
   }
   routerRuntime: {
     running: boolean
@@ -217,6 +223,7 @@ function summarizeTierAssignments(modelTiers: Record<string, RoutingTier>): Setu
       COMPLEX: 0,
       CODE: 0,
     },
+    classificationMode: 'heuristic',
   }
 }
 
@@ -226,6 +233,22 @@ function summarizeTierPriority(tierPriority: TierPriorityMap): Record<RoutingTie
     STANDARD: tierPriority.STANDARD?.length ?? 0,
     COMPLEX: tierPriority.COMPLEX?.length ?? 0,
     CODE: tierPriority.CODE?.length ?? 0,
+  }
+}
+
+function summarizeRoutingStrategy(routerAI: RouterAIConfig | undefined): {
+  classificationMode: RoutingClassificationMode
+  routerAIModel?: string
+} {
+  if (routerAI?.mode === 'ai' && routerAI.model !== undefined) {
+    return {
+      classificationMode: 'ai',
+      routerAIModel: routerAI.model,
+    }
+  }
+
+  return {
+    classificationMode: 'heuristic',
   }
 }
 
@@ -293,6 +316,34 @@ function buildTierPriorityPrompts(
       } satisfies TierPriorityPrompt
     })
     .filter((prompt): prompt is TierPriorityPrompt => prompt !== undefined)
+}
+
+function buildRouterAIModelPrompt(
+  config: RawConfig,
+  models: NormalizedModel[],
+  routerConfig: RouterConfig,
+  current: RouterAIConfig | undefined,
+): RouterAIPrompt {
+  const registry = new ProviderRegistry(models)
+  const orderedModels: NormalizedModel[] = []
+  const seen = new Set<string>()
+
+  for (const tier of ['STANDARD', 'SIMPLE', 'CODE', 'COMPLEX'] as const) {
+    for (const candidate of buildCandidateChain(undefined, config, registry, tier, routerConfig)) {
+      if (seen.has(candidate.model.id)) {
+        continue
+      }
+
+      seen.add(candidate.model.id)
+      orderedModels.push(candidate.model)
+    }
+  }
+
+  return {
+    current,
+    recommendedModelId: orderedModels[0]?.id,
+    models: orderedModels,
+  }
 }
 
 function readObservedOpenClawState(configPath: string): SetupResult['openClawObservedState'] | undefined {
@@ -606,6 +657,21 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
     { interactive: true, replaceExisting: options.resetExisting === true },
   )
 
+  const routerAIPreviewConfig: RouterConfig = {
+    ...setupAwareRouterConfig,
+    modelTiers: assignedTiers,
+    ...(Object.keys(assignedTierPriority).length > 0 ? { tierPriority: assignedTierPriority } : {}),
+  }
+  const assignedRouterAI = await runRouterAIWizard(
+    buildRouterAIModelPrompt(
+      discoveredConfig,
+      models,
+      routerAIPreviewConfig,
+      options.resetExisting === true ? undefined : existingRouterConfig.routerAI,
+    ),
+    { interactive: true },
+  )
+
   const nextRouterConfig: RouterConfig = {
     ...existingRouterConfig,
     modelTiers: assignedTiers,
@@ -615,6 +681,11 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
     nextRouterConfig.tierPriority = assignedTierPriority
   } else {
     delete nextRouterConfig.tierPriority
+  }
+  if (assignedRouterAI?.mode === 'ai') {
+    nextRouterConfig.routerAI = assignedRouterAI
+  } else {
+    delete nextRouterConfig.routerAI
   }
 
   saveRouterConfig(
@@ -665,6 +736,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   const routerConfigSummary = {
     ...summarizeTierAssignments(assignedTiers),
     priorityCounts: summarizeTierPriority(assignedTierPriority),
+    ...summarizeRoutingStrategy(assignedRouterAI),
   }
 
   return {
