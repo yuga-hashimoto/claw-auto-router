@@ -26,6 +26,10 @@ function formatTierSummary(tierCounts: Record<'SIMPLE' | 'STANDARD' | 'COMPLEX' 
 
 function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
   console.log('[claw-auto-router] Setup summary')
+  if (result.mode === 'clean-setup') {
+    console.log('[claw-auto-router] Mode')
+    console.log('  clean-setup      : existing claw-auto-router setup was rebuilt from scratch')
+  }
   console.log('[claw-auto-router] OpenClaw integration')
   console.log(`  Config path       : ${result.openClawConfigPath}`)
   console.log(`  Router model      : ${result.routerRef}`)
@@ -116,7 +120,7 @@ async function main(): Promise<void> {
     return
   }
 
-  if (cli.command === 'setup') {
+  if (cli.command === 'setup' || cli.command === 'clean-setup') {
     const setupOptions: Parameters<typeof runSetup>[0] = { port }
     if (configPath !== undefined) {
       setupOptions.configPath = configPath
@@ -132,6 +136,9 @@ async function main(): Promise<void> {
     }
     if (cli.modelId !== undefined) {
       setupOptions.modelId = cli.modelId
+    }
+    if (cli.command === 'clean-setup') {
+      setupOptions.resetExisting = true
     }
 
     const result = await runSetup(setupOptions)

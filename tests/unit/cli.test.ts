@@ -56,6 +56,14 @@ describe('parseCliArgs', () => {
     })
   })
 
+  it('parses clean-setup mode flags', () => {
+    expect(parseCliArgs(['clean-setup', '--config', '/tmp/openclaw.json'])).toEqual({
+      command: 'clean-setup',
+      help: false,
+      configPath: '/tmp/openclaw.json',
+    })
+  })
+
   it('throws for invalid integer values', () => {
     expect(() => parseCliArgs(['--port', 'abc'])).toThrow(
       'Invalid value for --port: expected an integer, received "abc"',
@@ -73,6 +81,7 @@ describe('getHelpText', () => {
 
     expect(helpText).toContain('claw-auto-router')
     expect(helpText).toContain('setup')
+    expect(helpText).toContain('clean-setup')
     expect(helpText).toContain('logs')
     expect(helpText).toContain('--config <path>')
     expect(helpText).toContain('--router-config <path>')

@@ -160,6 +160,12 @@ openclaw gateway status
 - writes `~/.openclaw/router.config.json`
 - updates your OpenClaw config to point `claw-auto-router/auto` at the local router
 
+If you want to throw away previous claw-auto-router tier assignments and rebuild them from scratch, use:
+
+```bash
+claw-auto-router clean-setup
+```
+
 It also installs a short alias:
 
 ```bash
@@ -171,6 +177,9 @@ Useful examples:
 ```bash
 # Use an explicit OpenClaw config path
 claw-auto-router setup --config ~/.openclaw/moltbot.json
+
+# Rebuild existing claw-auto-router setup from scratch
+claw-auto-router clean-setup
 
 # Use a custom router port during setup
 claw-auto-router setup --port 3001

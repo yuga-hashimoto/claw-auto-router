@@ -75,6 +75,41 @@ describe('deriveUpstreamSelection', () => {
       fallbacks: ['zai/glm'],
     })
   })
+
+  it('ignores saved integration during clean setup and rebuilds from current fallbacks', () => {
+    const result = deriveUpstreamSelection(
+      {
+        agents: {
+          defaults: {
+            model: {
+              primary: 'old-router/auto',
+              fallbacks: ['github-copilot/gpt-4o', 'zai/glm-5'],
+            },
+          },
+        },
+      },
+      {
+        openClawIntegration: {
+          providerId: 'old-router',
+          modelId: 'auto',
+          baseUrl: 'http://127.0.0.1:3000',
+          upstreamPrimary: 'stale/model',
+          upstreamFallbacks: ['stale/fallback'],
+        },
+      },
+      'claw-auto-router/auto',
+      {
+        ignoreSavedIntegration: true,
+        selfRefs: ['old-router/auto'],
+      },
+    )
+
+    expect(result).toEqual({
+      inferredFromFallbacks: true,
+      primary: 'github-copilot/gpt-4o',
+      fallbacks: ['zai/glm-5'],
+    })
+  })
 })
 
 describe('applySetupToOpenClawConfig', () => {
@@ -131,6 +166,58 @@ describe('applySetupToOpenClawConfig', () => {
     expect(updated.agents?.defaults?.model?.fallbacks).toEqual([
       'nvidia/qwen/qwen3.5-397b-a17b',
       'zai/glm-4.7',
+    ])
+  })
+
+  it('replaces an older router provider during clean setup', () => {
+    const config: RawConfig = {
+      models: {
+        providers: {
+          'old-router': {
+            baseUrl: 'http://127.0.0.1:3000',
+            apiKey: 'claw-auto-router-local',
+            api: 'openai-completions',
+            models: [{ id: 'auto', name: 'Auto Router' }],
+          },
+        },
+      },
+      agents: {
+        defaults: {
+          model: {
+            primary: 'old-router/auto',
+            fallbacks: ['openrouter/auto', 'github-copilot/gpt-4o'],
+          },
+        },
+      },
+    }
+
+    const integration: OpenClawIntegration = {
+      providerId: 'claw-auto-router',
+      modelId: 'auto',
+      baseUrl: 'http://127.0.0.1:3333',
+      upstreamPrimary: 'github-copilot/gpt-4o',
+      upstreamFallbacks: ['openrouter/auto'],
+    }
+
+    const updated = applySetupToOpenClawConfig(
+      config,
+      integration,
+      [makeModel('github-copilot/gpt-4o'), makeModel('openrouter/auto')],
+      {
+        previousIntegration: {
+          providerId: 'old-router',
+          modelId: 'auto',
+          baseUrl: 'http://127.0.0.1:3000',
+        },
+      },
+    )
+
+    expect(updated.models?.providers['old-router']).toBeUndefined()
+    expect(updated.models?.providers['claw-auto-router']?.baseUrl).toBe('http://127.0.0.1:3333')
+    expect(updated.agents?.defaults?.model?.primary).toBe('claw-auto-router/auto')
+    expect(updated.agents?.defaults?.model?.fallbacks).toEqual([
+      'github-copilot/gpt-4o',
+      'openrouter/auto',
     ])
   })
 })

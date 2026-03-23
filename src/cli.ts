@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 
 export interface CliOptions {
-  command: 'serve' | 'setup' | 'logs'
+  command: 'serve' | 'setup' | 'clean-setup' | 'logs'
   help: boolean
   configPath?: string
   routerConfigPath?: string
@@ -85,6 +85,8 @@ export function parseCliArgs(argv: string[]): CliOptions {
   if (rawCommand !== undefined) {
     if (rawCommand === 'setup') {
       command = 'setup'
+    } else if (rawCommand === 'clean-setup') {
+      command = 'clean-setup'
     } else if (rawCommand === 'logs') {
       command = 'logs'
     } else if (rawCommand === 'serve' || rawCommand === 'start') {
@@ -163,11 +165,14 @@ export function getHelpText(commandName = 'clawr'): string {
 Usage:
   ${commandName} [options]
   ${commandName} setup [options]
+  ${commandName} clean-setup [options]
   ${commandName} logs [options]
 
 Commands:
   setup                            Detect OpenClaw config, ask for model tiers,
                                    and wire OpenClaw to use ${commandName}
+  clean-setup                      Rebuild claw-auto-router settings from scratch
+                                   and replace existing tier assignments
   logs                             Show recent routing decisions and why they routed that way
 
 Common options:
@@ -187,6 +192,7 @@ Common options:
 
 Examples:
   ${commandName} setup
+  ${commandName} clean-setup
   ${commandName} setup --config ~/.openclaw/moltbot.json
   ${commandName} logs --limit 20
   ${commandName} logs --json

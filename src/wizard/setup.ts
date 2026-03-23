@@ -50,18 +50,22 @@ export async function runTierWizard(
   models: NormalizedModel[],
   existingTiers: Record<string, RoutingTier>,
   routerConfigPath: string,
-  options?: { interactive?: boolean | undefined },
+  options?: { interactive?: boolean | undefined, replaceExisting?: boolean | undefined },
 ): Promise<Record<string, RoutingTier>> {
-  const unassigned = models.filter((m) => existingTiers[m.id] === undefined)
+  const initialTiers = options?.replaceExisting === true ? {} : existingTiers
+  const unassigned =
+    options?.replaceExisting === true
+      ? models
+      : models.filter((m) => initialTiers[m.id] === undefined)
 
-  if (unassigned.length === 0) return existingTiers
+  if (unassigned.length === 0) return initialTiers
 
   if (options?.interactive !== true) {
     console.warn(
       `[claw-auto-router] ${unassigned.length} model(s) have no tier assignment — routing uses heuristics.`,
     )
     console.warn('[claw-auto-router] Run `claw-auto-router setup` to classify them interactively.')
-    return existingTiers
+    return initialTiers
   }
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -69,11 +73,11 @@ export async function runTierWizard(
       `[claw-auto-router] ${unassigned.length} model(s) have no tier assignment — routing uses heuristics.`,
     )
     console.warn('[claw-auto-router] Run `claw-auto-router setup` interactively to classify them.')
-    return existingTiers
+    return initialTiers
   }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const assigned = { ...existingTiers }
+  const assigned = { ...initialTiers }
 
   console.log()
   console.log('┌──────────────────────────────────────────────────────────────┐')
@@ -123,11 +127,12 @@ export async function runTierWizard(
 
   rl.close()
 
-  const newlyAssigned = Object.keys(assigned).length - Object.keys(existingTiers).length
-  if (newlyAssigned > 0) {
+  const savedAssignments = Object.keys(assigned).length
+  const newlyAssigned = savedAssignments - Object.keys(initialTiers).length
+  if (options?.replaceExisting === true || newlyAssigned > 0) {
     saveTiersToConfig(assigned, routerConfigPath)
     console.log(
-      `[claw-auto-router] Saved ${newlyAssigned} tier assignment(s) to ${routerConfigPath}`,
+      `[claw-auto-router] Saved ${options?.replaceExisting === true ? savedAssignments : newlyAssigned} tier assignment(s) to ${routerConfigPath}`,
     )
     console.log()
   }

@@ -31,9 +31,11 @@ export interface SetupOptions {
   providerId?: string
   modelId?: string
   port?: number
+  resetExisting?: boolean
 }
 
 export interface SetupResult {
+  mode: 'setup' | 'clean-setup'
   openClawConfigPath: string
   routerConfigPath: string
   routerRef: string
@@ -76,6 +78,11 @@ interface UpstreamSelection {
   fallbacks: string[]
 }
 
+interface UpstreamSelectionOptions {
+  ignoreSavedIntegration?: boolean
+  selfRefs?: string[]
+}
+
 interface OpenClawModelsStatusPayload {
   defaultModel?: string
   resolvedDefault?: string
@@ -101,6 +108,23 @@ function dedupe(values: string[]): string[] {
   }
 
   return result
+}
+
+function toRouterRef(providerId: string, modelId: string): string {
+  return `${providerId}/${modelId}`
+}
+
+function getKnownRouterRefs(
+  currentRouterRef: string,
+  previousIntegration?: OpenClawIntegration,
+): string[] {
+  const refs = [currentRouterRef]
+
+  if (previousIntegration !== undefined) {
+    refs.push(toRouterRef(previousIntegration.providerId, previousIntegration.modelId))
+  }
+
+  return dedupe(refs)
 }
 
 function discoverOpenClawConfigPathFromCommand(): string | undefined {
@@ -264,14 +288,20 @@ export function deriveUpstreamSelection(
   config: RawConfig,
   routerConfig: RouterConfig,
   routerRef: string,
+  options?: UpstreamSelectionOptions,
 ): UpstreamSelection {
+  const selfRefs = new Set([routerRef, ...(options?.selfRefs ?? [])])
   const saved = routerConfig.openClawIntegration
-  if (saved !== undefined && (saved.upstreamPrimary !== undefined || (saved.upstreamFallbacks?.length ?? 0) > 0)) {
+  if (
+    options?.ignoreSavedIntegration !== true &&
+    saved !== undefined &&
+    (saved.upstreamPrimary !== undefined || (saved.upstreamFallbacks?.length ?? 0) > 0)
+  ) {
     const selection: UpstreamSelection = {
       inferredFromFallbacks: false,
-      fallbacks: saved.upstreamFallbacks ?? [],
+      fallbacks: (saved.upstreamFallbacks ?? []).filter((ref) => !selfRefs.has(ref)),
     }
-    if (saved.upstreamPrimary !== undefined) {
+    if (saved.upstreamPrimary !== undefined && !selfRefs.has(saved.upstreamPrimary)) {
       selection.primary = saved.upstreamPrimary
     }
     return selection
@@ -279,10 +309,10 @@ export function deriveUpstreamSelection(
 
   const currentPrimary = config.agents?.defaults?.model?.primary
   const currentFallbacks = (config.agents?.defaults?.model?.fallbacks ?? []).filter(
-    (ref) => ref !== routerRef,
+    (ref) => !selfRefs.has(ref),
   )
 
-  if (currentPrimary !== undefined && currentPrimary !== routerRef) {
+  if (currentPrimary !== undefined && !selfRefs.has(currentPrimary)) {
     const selection: UpstreamSelection = {
       inferredFromFallbacks: false,
       fallbacks: currentFallbacks,
@@ -291,7 +321,7 @@ export function deriveUpstreamSelection(
     return selection
   }
 
-  if (currentPrimary === routerRef) {
+  if (currentPrimary !== undefined && selfRefs.has(currentPrimary)) {
     const [first, ...rest] = currentFallbacks
     const selection: UpstreamSelection = {
       inferredFromFallbacks: true,
@@ -326,11 +356,13 @@ export function applySetupToOpenClawConfig(
   config: RawConfig,
   integration: OpenClawIntegration,
   models: NormalizedModel[],
+  options?: { previousIntegration?: OpenClawIntegration | undefined },
 ): RawConfig {
-  const routerRef = `${integration.providerId}/${integration.modelId}`
+  const routerRef = toRouterRef(integration.providerId, integration.modelId)
+  const selfRefs = new Set(getKnownRouterRefs(routerRef, options?.previousIntegration))
   const directFallbacks = dedupe(
     [integration.upstreamPrimary, ...(integration.upstreamFallbacks ?? [])].filter(
-      (ref): ref is string => ref !== undefined && ref !== routerRef,
+      (ref): ref is string => ref !== undefined && !selfRefs.has(ref),
     ),
   )
 
@@ -341,12 +373,15 @@ export function applySetupToOpenClawConfig(
     models: [buildAutoRouterModel(models, integration.modelId)],
   }
 
+  const updatedProviders = { ...(config.models?.providers ?? {}) }
+  if (options?.previousIntegration !== undefined && options.previousIntegration.providerId !== integration.providerId) {
+    delete updatedProviders[options.previousIntegration.providerId]
+  }
+  updatedProviders[integration.providerId] = routerProvider
+
   const updatedModelsSection = {
     ...(config.models ?? {}),
-    providers: {
-      ...(config.models?.providers ?? {}),
-      [integration.providerId]: routerProvider,
-    },
+    providers: updatedProviders,
   }
 
   const updatedAgentDefaults = {
@@ -405,10 +440,14 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   const modelId = options.modelId ?? DEFAULT_MODEL_ID
   const port = options.port ?? 3000
   const baseUrl = options.baseUrl ?? `http://127.0.0.1:${port}`
-  const routerRef = `${providerId}/${modelId}`
+  const routerRef = toRouterRef(providerId, modelId)
   const routerConfigPath = resolveRouterConfigPath(options.routerConfigPath, outcome.path)
   const existingRouterConfig = loadRouterConfig(routerConfigPath, outcome.path)
-  const upstream = deriveUpstreamSelection(outcome.config, existingRouterConfig, routerRef)
+  const previousIntegration = existingRouterConfig.openClawIntegration
+  const upstream = deriveUpstreamSelection(outcome.config, existingRouterConfig, routerRef, {
+    ignoreSavedIntegration: options.resetExisting === true,
+    selfRefs: getKnownRouterRefs(routerRef, previousIntegration),
+  })
   const previousPrimary = outcome.config.agents?.defaults?.model?.primary
   const previousFallbacks = outcome.config.agents?.defaults?.model?.fallbacks ?? []
   const previousRouterProvider = outcome.config.models?.providers?.[providerId]
@@ -445,9 +484,9 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
 
   const assignedTiers = await runTierWizard(
     models,
-    existingRouterConfig.modelTiers ?? {},
+    options.resetExisting === true ? {} : (existingRouterConfig.modelTiers ?? {}),
     routerConfigPath,
-    { interactive: true },
+    { interactive: true, replaceExisting: options.resetExisting === true },
   )
 
   saveRouterConfig(
@@ -460,7 +499,9 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
     outcome.path,
   )
 
-  const updatedOpenClawConfig = applySetupToOpenClawConfig(outcome.config, integration, models)
+  const updatedOpenClawConfig = applySetupToOpenClawConfig(outcome.config, integration, models, {
+    previousIntegration,
+  })
   const { backupPath } = writeOpenClawConfig(outcome.path, updatedOpenClawConfig)
   const observedOpenClawState = readObservedOpenClawState(outcome.path)
   const routerRuntime = await probeRouterRuntime(baseUrl)
@@ -470,6 +511,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   const routerConfigSummary = summarizeTierAssignments(assignedTiers)
 
   return {
+    mode: options.resetExisting === true ? 'clean-setup' : 'setup',
     openClawConfigPath: outcome.path,
     routerConfigPath,
     routerRef,
