@@ -157,6 +157,7 @@ openclaw gateway status
 - detects your active OpenClaw config via `openclaw config file`
 - imports the current OpenClaw model catalog, including built-in configured providers like OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, and Google Antigravity
 - asks you to assign tiers to your current models
+- shows the current order inside each tier and lets you save explicit priority overrides
 - writes `~/.openclaw/router.config.json`
 - updates your OpenClaw config to point `claw-auto-router/auto` at the local router
 
@@ -345,8 +346,8 @@ Example:
 
 | Field | Description |
 |-------|-------------|
-| `modelTiers` | Explicit tier per model — overrides heuristic scoring. Set by startup wizard. |
-| `tierPriority` | Preferred model order within each tier (explicit beats score) |
+| `modelTiers` | Explicit tier per model — overrides heuristic scoring. Set by setup wizard. |
+| `tierPriority` | Preferred model order within each tier (explicit beats score). Setup wizard can write this too. |
 | `extraProviders` | Providers not in your OpenClaw config (e.g. openrouter, openai-codex, google-gemini-cli) |
 | `denylist` | Models to exclude from routing |
 

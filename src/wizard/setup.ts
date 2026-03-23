@@ -37,6 +37,17 @@ const TIER_CHOICES: TierChoice[] = [
   },
 ]
 
+const ROUTING_TIERS: RoutingTier[] = ['SIMPLE', 'STANDARD', 'COMPLEX', 'CODE']
+
+export type TierPriorityMap = Partial<Record<RoutingTier, string[]>>
+
+export interface TierPriorityPrompt {
+  tier: RoutingTier
+  models: NormalizedModel[]
+  existingPriorityIds: string[]
+  orderSource: 'automatic' | 'explicit'
+}
+
 /**
  * Interactive wizard that prompts the user to assign routing tiers
  * to models that don't have an explicit tier in modelTiers.
@@ -143,4 +154,145 @@ export async function runTierWizard(
 function saveTiersToConfig(tiers: Record<string, RoutingTier>, path: string): void {
   const existing = loadRouterConfig(path)
   saveRouterConfig({ ...existing, modelTiers: tiers }, path)
+}
+
+export async function runTierPriorityWizard(
+  prompts: TierPriorityPrompt[],
+  existingPriority: TierPriorityMap,
+  options?: { interactive?: boolean | undefined, replaceExisting?: boolean | undefined },
+): Promise<TierPriorityMap> {
+  const initialPriority = options?.replaceExisting === true ? {} : cloneTierPriority(existingPriority)
+  if (prompts.length === 0) {
+    return initialPriority
+  }
+
+  if (options?.interactive !== true) {
+    return initialPriority
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return initialPriority
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  const nextPriority = cloneTierPriority(initialPriority)
+
+  console.log('┌──────────────────────────────────────────────────────────────┐')
+  console.log('│        claw-auto-router — Tier Priority Setup Wizard         │')
+  console.log('├──────────────────────────────────────────────────────────────┤')
+  console.log('│  Review the order inside each tier.                          │')
+  console.log('│  Press Enter to keep the current setting.                    │')
+  console.log('│  Type "auto" to use automatic ordering.                      │')
+  console.log('│  Type numbers like "2 1 3" to pin models to the front.       │')
+  console.log('└──────────────────────────────────────────────────────────────┘')
+  console.log()
+
+  for (const prompt of prompts) {
+    console.log(`  Tier     : ${prompt.tier}`)
+    console.log(
+      `  Current  : ${prompt.orderSource === 'explicit' ? 'explicit priority override' : 'automatic heuristic/config order'}`,
+    )
+    console.log()
+
+    for (const [index, model] of prompt.models.entries()) {
+      console.log(`    ${index + 1}) ${model.name} (${model.id})`)
+    }
+    console.log()
+    console.log('    Enter  Keep current setting')
+    console.log('    auto   Remove explicit priority for this tier')
+    console.log('    2 1    Pin model 2 first, then model 1, keep the rest after them')
+    console.log()
+
+    while (true) {
+      const raw = (await rl.question('  Priority [Enter=keep, auto, numbers]: ')).trim()
+      if (raw === '') {
+        if (prompt.existingPriorityIds.length > 0 && options?.replaceExisting !== true) {
+          console.log(`  ✓ Keeping explicit priority for ${prompt.tier}`)
+        } else {
+          console.log(`  ✓ Keeping automatic order for ${prompt.tier}`)
+        }
+        break
+      }
+
+      if (raw.toLowerCase() === 'auto') {
+        delete nextPriority[prompt.tier]
+        console.log(`  ✓ ${prompt.tier} now uses automatic order`)
+        break
+      }
+
+      const selectedPositions = parsePrioritySelectionInput(raw, prompt.models.length)
+      if (selectedPositions === undefined) {
+        console.log('  Please enter unique numbers from the list, separated by spaces or commas.')
+        continue
+      }
+
+      nextPriority[prompt.tier] = selectedPositions.map((position) => prompt.models[position - 1]!.id)
+      console.log(
+        `  ✓ Saved explicit priority for ${prompt.tier}: ${nextPriority[prompt.tier]!.join(' -> ')}`,
+      )
+      break
+    }
+
+    console.log()
+  }
+
+  rl.close()
+
+  return pruneTierPriority(nextPriority)
+}
+
+export function parsePrioritySelectionInput(raw: string, maxPosition: number): number[] | undefined {
+  const tokens = raw
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter((token) => token !== '')
+
+  if (tokens.length === 0) {
+    return undefined
+  }
+
+  const seen = new Set<number>()
+  const positions: number[] = []
+
+  for (const token of tokens) {
+    const value = Number.parseInt(token, 10)
+    if (Number.isNaN(value) || `${value}` !== token || value < 1 || value > maxPosition || seen.has(value)) {
+      return undefined
+    }
+    seen.add(value)
+    positions.push(value)
+  }
+
+  return positions
+}
+
+function cloneTierPriority(priority: TierPriorityMap): TierPriorityMap {
+  const cloned: TierPriorityMap = {}
+
+  for (const tier of ROUTING_TIERS) {
+    const ids = priority[tier]
+    if (ids !== undefined && ids.length > 0) {
+      cloned[tier] = [...ids]
+    }
+  }
+
+  return cloned
+}
+
+function pruneTierPriority(priority: TierPriorityMap): TierPriorityMap {
+  const pruned: TierPriorityMap = {}
+
+  for (const tier of ROUTING_TIERS) {
+    const ids = priority[tier]
+    if (ids === undefined || ids.length === 0) {
+      continue
+    }
+
+    const uniqueIds = [...new Set(ids)]
+    if (uniqueIds.length > 0) {
+      pruned[tier] = uniqueIds
+    }
+  }
+
+  return pruned
 }

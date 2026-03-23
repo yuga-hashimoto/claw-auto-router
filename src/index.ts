@@ -24,6 +24,10 @@ function formatTierSummary(tierCounts: Record<'SIMPLE' | 'STANDARD' | 'COMPLEX' 
   return `SIMPLE ${tierCounts.SIMPLE}, STANDARD ${tierCounts.STANDARD}, COMPLEX ${tierCounts.COMPLEX}, CODE ${tierCounts.CODE}`
 }
 
+function formatPrioritySummary(priorityCounts: Record<'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'CODE', number>): string {
+  return `SIMPLE ${priorityCounts.SIMPLE}, STANDARD ${priorityCounts.STANDARD}, COMPLEX ${priorityCounts.COMPLEX}, CODE ${priorityCounts.CODE}`
+}
+
 function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
   console.log('[claw-auto-router] Setup summary')
   if (result.mode === 'clean-setup') {
@@ -51,6 +55,7 @@ function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
   console.log(`  Base URL          : ${result.routerBaseUrl}`)
   console.log(`  Tier assignments  : ${result.routerConfigSummary.totalAssigned}`)
   console.log(`  Tier breakdown    : ${formatTierSummary(result.routerConfigSummary.tierCounts)}`)
+  console.log(`  Priority rules    : ${formatPrioritySummary(result.routerConfigSummary.priorityCounts)}`)
 
   console.log('[claw-auto-router] Router runtime')
   console.log(`  Running now       : ${result.routerRuntime.running ? 'yes' : 'no'}`)

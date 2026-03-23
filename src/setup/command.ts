@@ -16,13 +16,21 @@ import {
   resolveGatewayBackedProviderIds,
 } from '../openclaw/discovery.js'
 import { normalizeConfig } from '../providers/normalizer.js'
+import { ProviderRegistry } from '../providers/registry.js'
 import type { NormalizedModel } from '../providers/types.js'
+import { buildCandidateChain } from '../router/chain-builder.js'
 import type { RoutingTier } from '../router/types.js'
 import { resolveUserPath } from '../utils/paths.js'
-import { runTierWizard } from '../wizard/setup.js'
+import {
+  runTierPriorityWizard,
+  runTierWizard,
+  type TierPriorityMap,
+  type TierPriorityPrompt,
+} from '../wizard/setup.js'
 
 const DEFAULT_PROVIDER_ID = 'claw-auto-router'
 const DEFAULT_MODEL_ID = 'auto'
+const ROUTING_TIERS: RoutingTier[] = ['SIMPLE', 'STANDARD', 'COMPLEX', 'CODE']
 
 export interface SetupOptions {
   configPath?: string
@@ -60,6 +68,7 @@ export interface SetupResult {
   routerConfigSummary: {
     totalAssigned: number
     tierCounts: Record<RoutingTier, number>
+    priorityCounts: Record<RoutingTier, number>
   }
   routerRuntime: {
     running: boolean
@@ -190,6 +199,21 @@ function summarizeTierAssignments(modelTiers: Record<string, RoutingTier>): Setu
   return {
     totalAssigned: Object.keys(modelTiers).length,
     tierCounts,
+    priorityCounts: {
+      SIMPLE: 0,
+      STANDARD: 0,
+      COMPLEX: 0,
+      CODE: 0,
+    },
+  }
+}
+
+function summarizeTierPriority(tierPriority: TierPriorityMap): Record<RoutingTier, number> {
+  return {
+    SIMPLE: tierPriority.SIMPLE?.length ?? 0,
+    STANDARD: tierPriority.STANDARD?.length ?? 0,
+    COMPLEX: tierPriority.COMPLEX?.length ?? 0,
+    CODE: tierPriority.CODE?.length ?? 0,
   }
 }
 
@@ -202,6 +226,61 @@ function describeProviderAction(
   }
 
   return JSON.stringify(previousProvider) === JSON.stringify(nextProvider) ? 'unchanged' : 'updated'
+}
+
+function sanitizeTierPriority(
+  tierPriority: RouterConfig['tierPriority'] | undefined,
+  assignedTiers: Record<string, RoutingTier>,
+  models: NormalizedModel[],
+): TierPriorityMap {
+  const availableModelIds = new Set(models.map((model) => model.id))
+  const sanitized: TierPriorityMap = {}
+
+  for (const tier of ROUTING_TIERS) {
+    const ids = tierPriority?.[tier]
+    if (ids === undefined) {
+      continue
+    }
+
+    const filtered = dedupe(ids.filter((id) => assignedTiers[id] === tier && availableModelIds.has(id)))
+    if (filtered.length > 0) {
+      sanitized[tier] = filtered
+    }
+  }
+
+  return sanitized
+}
+
+function buildTierPriorityPrompts(
+  config: RawConfig,
+  models: NormalizedModel[],
+  assignedTiers: Record<string, RoutingTier>,
+  routerConfig: RouterConfig,
+  existingPriority: TierPriorityMap,
+): TierPriorityPrompt[] {
+  const registry = new ProviderRegistry(models)
+
+  return ROUTING_TIERS
+    .map((tier) => {
+      const orderedModels = buildCandidateChain(undefined, config, registry, tier, routerConfig)
+        .map((candidate) => candidate.model)
+        .filter((model) => assignedTiers[model.id] === tier)
+
+      if (orderedModels.length < 2) {
+        return undefined
+      }
+
+      const orderedIds = new Set(orderedModels.map((model) => model.id))
+      const existingPriorityIds = (existingPriority[tier] ?? []).filter((id) => orderedIds.has(id))
+
+      return {
+        tier,
+        models: orderedModels,
+        existingPriorityIds,
+        orderSource: existingPriorityIds.length > 0 ? 'explicit' : 'automatic',
+      } satisfies TierPriorityPrompt
+    })
+    .filter((prompt): prompt is TierPriorityPrompt => prompt !== undefined)
 }
 
 function readObservedOpenClawState(configPath: string): SetupResult['openClawObservedState'] | undefined {
@@ -489,12 +568,42 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
     { interactive: true, replaceExisting: options.resetExisting === true },
   )
 
+  const sanitizedExistingPriority = sanitizeTierPriority(
+    options.resetExisting === true ? undefined : existingRouterConfig.tierPriority,
+    assignedTiers,
+    models,
+  )
+  const priorityPreviewRouterConfig: RouterConfig = {
+    ...setupAwareRouterConfig,
+    modelTiers: assignedTiers,
+    ...(Object.keys(sanitizedExistingPriority).length > 0 ? { tierPriority: sanitizedExistingPriority } : {}),
+  }
+  const priorityPrompts = buildTierPriorityPrompts(
+    discoveredConfig,
+    models,
+    assignedTiers,
+    priorityPreviewRouterConfig,
+    sanitizedExistingPriority,
+  )
+  const assignedTierPriority = await runTierPriorityWizard(
+    priorityPrompts,
+    sanitizedExistingPriority,
+    { interactive: true, replaceExisting: options.resetExisting === true },
+  )
+
+  const nextRouterConfig: RouterConfig = {
+    ...existingRouterConfig,
+    modelTiers: assignedTiers,
+    openClawIntegration: integration,
+  }
+  if (Object.keys(assignedTierPriority).length > 0) {
+    nextRouterConfig.tierPriority = assignedTierPriority
+  } else {
+    delete nextRouterConfig.tierPriority
+  }
+
   saveRouterConfig(
-    {
-      ...existingRouterConfig,
-      modelTiers: assignedTiers,
-      openClawIntegration: integration,
-    },
+    nextRouterConfig,
     routerConfigPath,
     outcome.path,
   )
@@ -508,7 +617,10 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   const routerProvider = updatedOpenClawConfig.models?.providers?.[providerId]
   const updatedPrimary = updatedOpenClawConfig.agents?.defaults?.model?.primary ?? routerRef
   const updatedFallbacks = updatedOpenClawConfig.agents?.defaults?.model?.fallbacks ?? []
-  const routerConfigSummary = summarizeTierAssignments(assignedTiers)
+  const routerConfigSummary = {
+    ...summarizeTierAssignments(assignedTiers),
+    priorityCounts: summarizeTierPriority(assignedTierPriority),
+  }
 
   return {
     mode: options.resetExisting === true ? 'clean-setup' : 'setup',
