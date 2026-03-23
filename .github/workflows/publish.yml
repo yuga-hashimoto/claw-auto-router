@@ -89,7 +89,26 @@ jobs:
 
       - name: Publish to npm
         if: steps.publish_check.outputs.should_publish == 'true'
-        run: npm publish
+        run: |
+          set +e
+          PUBLISH_OUTPUT="$(npm publish 2>&1)"
+          PUBLISH_STATUS=$?
+          set -e
+
+          echo "$PUBLISH_OUTPUT"
+
+          if [ "$PUBLISH_STATUS" -eq 0 ]; then
+            exit 0
+          fi
+
+          sleep 5
+          VERSION="$(npm view "${{ steps.package.outputs.name }}" version 2>/dev/null || true)"
+          if [ "$VERSION" = "${{ steps.package.outputs.version }}" ]; then
+            echo "Version ${{ steps.package.outputs.version }} is already on npm after publish retry check. Treating as success."
+            exit 0
+          fi
+
+          exit "$PUBLISH_STATUS"
 
       - name: Create GitHub Release
         if: steps.publish_check.outputs.should_create_release == 'true'
