@@ -193,6 +193,7 @@ npm publishing is handled by GitHub Actions trusted publishing in
 [`publish.yml`](./.github/workflows/publish.yml).
 
 - Bump the `version` in `package.json`
+- Register `yuga-hashimoto/claw-auto-router` + `.github/workflows/publish.yml` once as an npm trusted publisher
 - Push to `main` or run the workflow manually from GitHub Actions
 - The workflow runs `pnpm typecheck`, `pnpm test`, and `pnpm build`
 - If that version is not already on npm, it publishes automatically without an npm token
