@@ -112,4 +112,39 @@ describe('decision log', () => {
     expect(output).toContain('Analyze this architecture.')
     expect(output).toContain('duration=2345ms')
   })
+
+  it('keeps only the latest 100 routing decisions on disk', () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'decision-log-test-'))
+    const configPath = join(tempDir, 'moltbot.json')
+    writeFileSync(configPath, '{}\n', 'utf-8')
+
+    for (let index = 1; index <= 105; index += 1) {
+      appendDecisionLogEntry(
+        buildDecisionLogEntry({
+          requestId: `req-${index}`,
+          requestedModel: 'auto',
+          resolvedModel: `provider/model-${index}`,
+          success: true,
+          fallbackUsed: false,
+          stream: false,
+          totalDurationMs: index,
+          messageCount: 1,
+          classification: {
+            tier: 'STANDARD',
+            totalTokens: index,
+            lastUserMessage: `message ${index}`,
+            reasons: ['test'],
+          },
+          candidates: [],
+          attempts: [],
+        }),
+        configPath,
+      )
+    }
+
+    const entries = readDecisionLogEntries(200, configPath)
+    expect(entries).toHaveLength(100)
+    expect(entries[0]?.requestId).toBe('req-105')
+    expect(entries[99]?.requestId).toBe('req-6')
+  })
 })
