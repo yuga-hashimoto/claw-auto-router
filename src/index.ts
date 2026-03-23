@@ -19,6 +19,65 @@ import { runSetup } from './setup/command.js'
 import { runTierWizard } from './wizard/setup.js'
 import { getEnv, getEnvOrDefault, getEnvInt } from './utils/env.js'
 
+function formatTierSummary(tierCounts: Record<'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'CODE', number>): string {
+  return `SIMPLE ${tierCounts.SIMPLE}, STANDARD ${tierCounts.STANDARD}, COMPLEX ${tierCounts.COMPLEX}, CODE ${tierCounts.CODE}`
+}
+
+function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
+  console.log('[claw-auto-router] Setup summary')
+  console.log('[claw-auto-router] OpenClaw integration')
+  console.log(`  Config path       : ${result.openClawConfigPath}`)
+  console.log(`  Router model      : ${result.routerRef}`)
+  console.log(`  Provider action   : ${result.openClawChanges.providerAction}`)
+  console.log(
+    `  Primary model     : ${result.openClawChanges.primaryBefore ?? '(unset)'} -> ${result.openClawChanges.primaryAfter}`,
+  )
+  console.log(
+    `  Fallbacks         : ${result.openClawChanges.fallbacksBefore.length} -> ${result.openClawChanges.fallbacksAfter.length}`,
+  )
+  if (result.openClawObservedState !== undefined) {
+    console.log(
+      `  OpenClaw sees     : ${result.openClawObservedState.resolvedDefault ?? result.openClawObservedState.defaultModel ?? '(unknown)'}`,
+    )
+  }
+
+  console.log('[claw-auto-router] Router configuration')
+  console.log(`  Router config     : ${result.routerConfigPath}`)
+  console.log(`  Base URL          : ${result.routerBaseUrl}`)
+  console.log(`  Tier assignments  : ${result.routerConfigSummary.totalAssigned}`)
+  console.log(`  Tier breakdown    : ${formatTierSummary(result.routerConfigSummary.tierCounts)}`)
+
+  console.log('[claw-auto-router] Router runtime')
+  console.log(`  Running now       : ${result.routerRuntime.running ? 'yes' : 'no'}`)
+  console.log(`  Health endpoint   : ${result.routerRuntime.healthUrl}`)
+  console.log(`  Models endpoint   : ${result.routerRuntime.modelsUrl}`)
+  if (result.routerRuntime.running) {
+    console.log(
+      `  Health check      : ${result.routerRuntime.healthStatus ?? 'ok'} ` +
+        `(${result.routerRuntime.totalModels ?? 0} models, ${result.routerRuntime.resolvableModels ?? 0} executable)`,
+    )
+  } else {
+    console.log(`  Health check      : ${result.routerRuntime.error ?? 'not reachable'}`)
+  }
+
+  if (result.backupPath !== undefined) {
+    console.log(`[claw-auto-router] Backup created : ${result.backupPath}`)
+  }
+  if (result.inferredUpstreamFromFallbacks) {
+    console.log(
+      '[claw-auto-router] Note: OpenClaw already pointed at the router, so the upstream primary was inferred from the first non-router fallback.',
+    )
+  }
+
+  console.log('[claw-auto-router] How to test')
+  if (!result.routerRuntime.running) {
+    console.log(`  Start router      : ${result.suggestedStartCommand}`)
+  }
+  console.log(`  Health check      : curl ${result.routerRuntime.healthUrl}`)
+  console.log(`  Model list        : curl ${result.routerRuntime.modelsUrl}`)
+  console.log(`  OpenClaw check    : openclaw models status --json`)
+}
+
 function getCommandName(): string {
   const invoked = basename(process.argv[1] ?? '')
   if (invoked === '' || invoked === 'index.js') {
@@ -64,20 +123,7 @@ async function main(): Promise<void> {
     }
 
     const result = await runSetup(setupOptions)
-
-    console.log(`[claw-auto-router] OpenClaw config: ${result.openClawConfigPath}`)
-    console.log(`[claw-auto-router] Router config  : ${result.routerConfigPath}`)
-    console.log(`[claw-auto-router] OpenClaw model : ${result.routerRef}`)
-    if (result.backupPath !== undefined) {
-      console.log(`[claw-auto-router] Backup created : ${result.backupPath}`)
-    }
-    if (result.inferredUpstreamFromFallbacks) {
-      console.log(
-        '[claw-auto-router] Note: OpenClaw already pointed at the router, so the upstream primary was inferred from the first non-router fallback.',
-      )
-    }
-    console.log('[claw-auto-router] Setup complete. Start the router with:')
-    console.log(`  ${result.suggestedStartCommand}`)
+    printSetupSummary(result)
     return
   }
 

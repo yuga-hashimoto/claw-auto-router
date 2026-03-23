@@ -17,6 +17,7 @@ import {
 } from '../openclaw/discovery.js'
 import { normalizeConfig } from '../providers/normalizer.js'
 import type { NormalizedModel } from '../providers/types.js'
+import type { RoutingTier } from '../router/types.js'
 import { resolveUserPath } from '../utils/paths.js'
 import { runTierWizard } from '../wizard/setup.js'
 
@@ -36,17 +37,57 @@ export interface SetupResult {
   openClawConfigPath: string
   routerConfigPath: string
   routerRef: string
+  routerBaseUrl: string
   backupPath?: string
   suggestedStartCommand: string
   inferredUpstreamFromFallbacks: boolean
   upstreamPrimary?: string
   upstreamFallbacks: string[]
+  openClawChanges: {
+    providerAction: 'created' | 'updated' | 'unchanged'
+    primaryBefore?: string
+    primaryAfter: string
+    fallbacksBefore: string[]
+    fallbacksAfter: string[]
+  }
+  openClawObservedState?: {
+    defaultModel?: string
+    resolvedDefault?: string
+    fallbacks: string[]
+  }
+  routerConfigSummary: {
+    totalAssigned: number
+    tierCounts: Record<RoutingTier, number>
+  }
+  routerRuntime: {
+    running: boolean
+    healthUrl: string
+    modelsUrl: string
+    healthStatus?: string
+    totalModels?: number
+    resolvableModels?: number
+    error?: string
+  }
 }
 
 interface UpstreamSelection {
   inferredFromFallbacks: boolean
   primary?: string
   fallbacks: string[]
+}
+
+interface OpenClawModelsStatusPayload {
+  defaultModel?: string
+  resolvedDefault?: string
+  fallbacks?: string[]
+}
+
+interface RouterHealthPayload {
+  status?: string
+  models?: {
+    total?: number
+    resolvable?: number
+  }
 }
 
 function dedupe(values: string[]): string[] {
@@ -104,6 +145,119 @@ function buildSuggestedStartCommand(port: number, baseUrl: string): string {
   }
 
   return port === 3000 ? 'claw-auto-router' : `claw-auto-router --port ${port}`
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, '')
+}
+
+function summarizeTierAssignments(modelTiers: Record<string, RoutingTier>): SetupResult['routerConfigSummary'] {
+  const tierCounts: Record<RoutingTier, number> = {
+    SIMPLE: 0,
+    STANDARD: 0,
+    COMPLEX: 0,
+    CODE: 0,
+  }
+
+  for (const tier of Object.values(modelTiers)) {
+    tierCounts[tier] += 1
+  }
+
+  return {
+    totalAssigned: Object.keys(modelTiers).length,
+    tierCounts,
+  }
+}
+
+function describeProviderAction(
+  previousProvider: RawProvider | undefined,
+  nextProvider: RawProvider,
+): SetupResult['openClawChanges']['providerAction'] {
+  if (previousProvider === undefined) {
+    return 'created'
+  }
+
+  return JSON.stringify(previousProvider) === JSON.stringify(nextProvider) ? 'unchanged' : 'updated'
+}
+
+function readObservedOpenClawState(configPath: string): SetupResult['openClawObservedState'] | undefined {
+  const result = spawnSync('openclaw', ['models', 'status', '--json'], {
+    encoding: 'utf-8',
+    env: {
+      ...process.env,
+      OPENCLAW_CONFIG_PATH: configPath,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  if (result.status !== 0) {
+    return undefined
+  }
+
+  const firstBrace = result.stdout.indexOf('{')
+  if (firstBrace === -1) {
+    return undefined
+  }
+
+  try {
+    const payload = JSON.parse(result.stdout.slice(firstBrace)) as OpenClawModelsStatusPayload
+    return {
+      ...(payload.defaultModel !== undefined ? { defaultModel: payload.defaultModel } : {}),
+      ...(payload.resolvedDefault !== undefined ? { resolvedDefault: payload.resolvedDefault } : {}),
+      fallbacks: payload.fallbacks ?? [],
+    }
+  } catch {
+    return undefined
+  }
+}
+
+async function probeRouterRuntime(baseUrl: string): Promise<SetupResult['routerRuntime']> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+  const healthUrl = `${normalizedBaseUrl}/health`
+  const modelsUrl = `${normalizedBaseUrl}/v1/models`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 1_500)
+
+  try {
+    const response = await fetch(healthUrl, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      return {
+        running: false,
+        healthUrl,
+        modelsUrl,
+        error: `HTTP ${response.status} from /health`,
+      }
+    }
+
+    const payload = (await response.json()) as RouterHealthPayload
+    return {
+      running: true,
+      healthUrl,
+      modelsUrl,
+      ...(payload.status !== undefined ? { healthStatus: payload.status } : {}),
+      ...(payload.models?.total !== undefined ? { totalModels: payload.models.total } : {}),
+      ...(payload.models?.resolvable !== undefined ? { resolvableModels: payload.models.resolvable } : {}),
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error && error.name === 'AbortError'
+        ? 'Router did not respond to /health within 1.5s'
+        : error instanceof Error
+          ? error.message
+          : 'Could not reach claw-auto-router'
+    return {
+      running: false,
+      healthUrl,
+      modelsUrl,
+      error: message,
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export function deriveUpstreamSelection(
@@ -255,6 +409,9 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   const routerConfigPath = resolveRouterConfigPath(options.routerConfigPath, outcome.path)
   const existingRouterConfig = loadRouterConfig(routerConfigPath, outcome.path)
   const upstream = deriveUpstreamSelection(outcome.config, existingRouterConfig, routerRef)
+  const previousPrimary = outcome.config.agents?.defaults?.model?.primary
+  const previousFallbacks = outcome.config.agents?.defaults?.model?.fallbacks ?? []
+  const previousRouterProvider = outcome.config.models?.providers?.[providerId]
 
   const integration: OpenClawIntegration = {
     providerId,
@@ -278,7 +435,9 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
     gatewayBackedProviderIds,
     gatewayAvailable: true,
   })
-  const visibleWarnings = filterUnsupportedProviderWarnings(warnings, discoveryWarnings)
+  const visibleWarnings = filterUnsupportedProviderWarnings(warnings, discoveryWarnings).filter(
+    (warning) => !warning.startsWith(`Phantom ref "${routerRef}"`),
+  )
 
   for (const warning of [...discoveryWarnings, ...visibleWarnings]) {
     console.warn(`[claw-auto-router] ${warning}`)
@@ -303,15 +462,35 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
 
   const updatedOpenClawConfig = applySetupToOpenClawConfig(outcome.config, integration, models)
   const { backupPath } = writeOpenClawConfig(outcome.path, updatedOpenClawConfig)
+  const observedOpenClawState = readObservedOpenClawState(outcome.path)
+  const routerRuntime = await probeRouterRuntime(baseUrl)
+  const routerProvider = updatedOpenClawConfig.models?.providers?.[providerId]
+  const updatedPrimary = updatedOpenClawConfig.agents?.defaults?.model?.primary ?? routerRef
+  const updatedFallbacks = updatedOpenClawConfig.agents?.defaults?.model?.fallbacks ?? []
+  const routerConfigSummary = summarizeTierAssignments(assignedTiers)
 
   return {
     openClawConfigPath: outcome.path,
     routerConfigPath,
     routerRef,
+    routerBaseUrl: baseUrl,
     suggestedStartCommand: buildSuggestedStartCommand(port, baseUrl),
     ...(backupPath !== undefined ? { backupPath } : {}),
     inferredUpstreamFromFallbacks: upstream.inferredFromFallbacks,
     ...(upstream.primary !== undefined ? { upstreamPrimary: upstream.primary } : {}),
     upstreamFallbacks: upstream.fallbacks,
+    openClawChanges: {
+      providerAction:
+        routerProvider !== undefined
+          ? describeProviderAction(previousRouterProvider, routerProvider)
+          : 'unchanged',
+      ...(previousPrimary !== undefined ? { primaryBefore: previousPrimary } : {}),
+      primaryAfter: updatedPrimary,
+      fallbacksBefore: previousFallbacks,
+      fallbacksAfter: updatedFallbacks,
+    },
+    ...(observedOpenClawState !== undefined ? { openClawObservedState: observedOpenClawState } : {}),
+    routerConfigSummary,
+    routerRuntime,
   }
 }
