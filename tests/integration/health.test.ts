@@ -23,6 +23,7 @@ const app = buildApp({
   config: {},
   registry,
   logLevel: 'silent',
+  decisionLogEnabled: false,
 })
 
 describe('GET /health', () => {

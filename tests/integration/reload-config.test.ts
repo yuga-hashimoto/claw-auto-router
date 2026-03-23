@@ -30,6 +30,7 @@ const app = buildApp({
   registry: new ProviderRegistry([]),
   logLevel: 'silent',
   configPath,
+  decisionLogEnabled: false,
 })
 
 describe('POST /reload-config', () => {
@@ -72,6 +73,7 @@ describe('POST /reload-config', () => {
       registry: new ProviderRegistry([]),
       logLevel: 'silent',
       adminToken: 'secret-token',
+      decisionLogEnabled: false,
     })
     await tokenApp.ready()
 

@@ -24,7 +24,7 @@ const registry = new ProviderRegistry([
   makeModel('zai/glm-4.7', false), // unresolved — should not appear
 ])
 
-const app = buildApp({ config: {}, registry, logLevel: 'silent' })
+const app = buildApp({ config: {}, registry, logLevel: 'silent', decisionLogEnabled: false })
 
 describe('GET /v1/models', () => {
   beforeAll(() => app.ready())

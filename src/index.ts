@@ -5,6 +5,7 @@ import { getHelpText, parseCliArgs } from './cli.js'
 import { loadOpenClawConfig } from './config/loader.js'
 import { loadRouterConfig, resolveRouterConfigPath } from './config/router-config.js'
 import type { RouterConfig } from './config/router-config.js'
+import { readDecisionLogEntries, renderDecisionLogEntries } from './decision-log.js'
 import {
   augmentConfigWithOpenClawDiscovery,
   filterUnsupportedProviderWarnings,
@@ -75,6 +76,7 @@ function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
   }
   console.log(`  Health check      : curl ${result.routerRuntime.healthUrl}`)
   console.log(`  Model list        : curl ${result.routerRuntime.modelsUrl}`)
+  console.log('  Decision logs     : claw-auto-router logs --limit 20')
   console.log(`  OpenClaw check    : openclaw models status --json`)
 }
 
@@ -103,6 +105,16 @@ async function main(): Promise<void> {
   const logLevel = cli.logLevel ?? getEnvOrDefault('LOG_LEVEL', 'info')
   const adminToken = cli.adminToken ?? getEnv('ROUTER_ADMIN_TOKEN')
   const requestTimeoutMs = cli.requestTimeoutMs ?? getEnvInt('ROUTER_REQUEST_TIMEOUT_MS', 30_000)
+
+  if (cli.command === 'logs') {
+    const entries = readDecisionLogEntries(cli.limit ?? 20, configPath)
+    if (cli.json) {
+      console.log(JSON.stringify(entries, null, 2))
+    } else {
+      console.log(renderDecisionLogEntries(entries))
+    }
+    return
+  }
 
   if (cli.command === 'setup') {
     const setupOptions: Parameters<typeof runSetup>[0] = { port }

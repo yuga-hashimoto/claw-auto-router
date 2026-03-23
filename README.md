@@ -179,6 +179,13 @@ claw-auto-router setup --port 3001
 claw-auto-router --port 3001
 ```
 
+See recent routing decisions and why they were chosen:
+
+```bash
+claw-auto-router logs --limit 20
+claw-auto-router logs --json
+```
+
 If you want the latest unreleased version straight from GitHub instead:
 
 ```bash

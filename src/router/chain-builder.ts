@@ -35,7 +35,12 @@ export function buildCandidateChain(
     if (model === undefined) return // phantom ref
     if (!isModelAvailable(model)) return
     seen.add(ref)
-    configCandidates.push({ model, position: configCandidates.length, reason })
+    configCandidates.push({
+      model,
+      position: configCandidates.length,
+      configPosition: configCandidates.length,
+      reason,
+    })
   }
 
   // 1. Explicit model request (not "auto") — always goes first, bypasses scoring
@@ -43,7 +48,12 @@ export function buildCandidateChain(
   if (requestedModel !== undefined && requestedModel !== 'auto') {
     const model = registry.lookup(requestedModel)
     if (model !== undefined && isModelAvailable(model)) {
-      explicitCandidate = { model, position: 0, reason: 'explicitly requested by caller' }
+      explicitCandidate = {
+        model,
+        position: 0,
+        configPosition: -1,
+        reason: 'explicitly requested by caller',
+      }
       seen.add(model.id)
     }
   }
@@ -63,7 +73,12 @@ export function buildCandidateChain(
     if (selfRef !== undefined && model.id === selfRef) continue
     if (!seen.has(model.id)) {
       seen.add(model.id)
-      configCandidates.push({ model, position: configCandidates.length, reason: 'last-resort candidate' })
+      configCandidates.push({
+        model,
+        position: configCandidates.length,
+        configPosition: configCandidates.length,
+        reason: 'last-resort candidate',
+      })
     }
   }
 

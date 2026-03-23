@@ -2,8 +2,9 @@ import type { RawConfig } from '../config/schema.js'
 import type { RouterConfig } from '../config/router-config.js'
 import type { ProviderRegistry } from '../providers/registry.js'
 import type { RoutingRequest, RouteResult } from './types.js'
-import { classifyRequest } from './classifier.js'
+import { classifyRequestDetailed } from './classifier.js'
 import { buildCandidateChain } from './chain-builder.js'
+import { explainCandidateScore } from './scorer.js'
 import { NoCandidatesError } from '../utils/errors.js'
 
 /**
@@ -23,8 +24,8 @@ export function route(
   registry: ProviderRegistry,
   routerConfig?: RouterConfig,
 ): RouteResult {
-  const tier = classifyRequest(request)
-  const candidates = buildCandidateChain(request.model, config, registry, tier, routerConfig)
+  const classification = classifyRequestDetailed(request)
+  const candidates = buildCandidateChain(request.model, config, registry, classification.tier, routerConfig)
 
   if (candidates.length === 0) {
     throw new NoCandidatesError(request.model)
@@ -36,5 +37,36 @@ export function route(
     throw new NoCandidatesError(request.model)
   }
 
-  return { winner, fallbacks, tier }
+  const decision = {
+    requestedModel: request.model,
+    classification,
+    candidates: candidates.map((candidate) => {
+      const explicit = candidate.reason === 'explicitly requested by caller'
+      const scoreExplanation = explicit
+        ? {
+            score: undefined,
+            reasons: ['Explicit model request bypassed routing heuristics'],
+          }
+        : explainCandidateScore(
+            candidate.model,
+            classification.tier,
+            candidate.configPosition,
+            routerConfig?.modelTiers,
+          )
+
+      return {
+        modelId: candidate.model.id,
+        modelName: candidate.model.name,
+        finalPosition: candidate.position,
+        configPosition: candidate.configPosition,
+        sourceReason: candidate.reason,
+        ...(scoreExplanation.score !== undefined ? { score: scoreExplanation.score } : {}),
+        scoreReasons: scoreExplanation.reasons,
+        explicit,
+        ...(candidate.model.transport !== undefined ? { transport: candidate.model.transport } : {}),
+      }
+    }),
+  }
+
+  return { winner, fallbacks, tier: classification.tier, decision }
 }

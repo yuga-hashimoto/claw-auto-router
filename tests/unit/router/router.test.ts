@@ -39,6 +39,8 @@ describe('route', () => {
     const result = route({ messages: [{ role: 'user', content: 'Hello' }] }, config, registry)
     expect(result.winner.model.id).toBe('kimi-coding/k2p5')
     expect(result.fallbacks[0]?.model.id).toBe('nvidia/qwen/model')
+    expect(result.decision?.classification.tier).toBe(result.tier)
+    expect(result.decision?.candidates[0]?.modelId).toBe('kimi-coding/k2p5')
   })
 
   it('includes tier in result', () => {
@@ -60,6 +62,7 @@ describe('route', () => {
       registry,
     )
     expect(result.winner.model.id).toBe('nvidia/qwen/model')
+    expect(result.decision?.candidates[0]?.explicit).toBe(true)
   })
 
   it('falls back to primary when model=auto', () => {

@@ -2,9 +2,35 @@ import type { NormalizedModel } from '../providers/types.js'
 
 export type RoutingTier = 'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'CODE'
 
+export interface ClassificationDetail {
+  tier: RoutingTier
+  totalTokens: number
+  lastUserMessage: string
+  reasons: string[]
+}
+
+export interface CandidateDecisionDetail {
+  modelId: string
+  modelName: string
+  finalPosition: number
+  configPosition: number
+  sourceReason: string
+  score?: number | undefined
+  scoreReasons: string[]
+  explicit: boolean
+  transport?: string | undefined
+}
+
+export interface RoutingDecisionDetail {
+  requestedModel?: string | undefined
+  classification: ClassificationDetail
+  candidates: CandidateDecisionDetail[]
+}
+
 export interface RouteCandidate {
   model: NormalizedModel
   position: number
+  configPosition: number
   reason: string
 }
 
@@ -12,6 +38,7 @@ export interface RouteResult {
   winner: RouteCandidate
   fallbacks: RouteCandidate[]
   tier: RoutingTier
+  decision?: RoutingDecisionDetail | undefined
 }
 
 export interface RoutingRequest {

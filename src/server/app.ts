@@ -19,6 +19,7 @@ export interface AppOptions {
   routerConfigPath?: string | undefined
   routerConfig?: RouterConfig | undefined
   gatewayContext?: OpenClawGatewayContext | undefined
+  decisionLogEnabled?: boolean | undefined
   logLevel?: string | undefined
   adminToken?: string | undefined
   requestTimeoutMs?: number | undefined
@@ -41,6 +42,7 @@ export function buildApp(options: AppOptions) {
     routerConfigPath: options.routerConfigPath,
     routerConfig: options.routerConfig ?? {},
     gatewayContext: options.gatewayContext,
+    decisionLogEnabled: options.decisionLogEnabled ?? true,
   }
 
   const timeoutMs = options.requestTimeoutMs ?? 30_000
@@ -66,6 +68,7 @@ export function buildApp(options: AppOptions) {
       getRegistry: () => state.registry,
       getRouterConfig: () => state.routerConfig,
       getGatewayContext: () => state.gatewayContext,
+      getDecisionLogEnabled: () => state.decisionLogEnabled,
     },
     stats,
     timeoutMs,

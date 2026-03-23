@@ -1,4 +1,4 @@
-import type { RoutingTier, RoutingRequest, OpenAIMessage, OpenAIContentPart } from './types.js'
+import type { ClassificationDetail, RoutingTier, RoutingRequest, OpenAIMessage, OpenAIContentPart } from './types.js'
 
 const CODE_KEYWORDS =
   /\b(function|class|interface|def |import |require\(|void |async |await|const |let |var |return |throw |try |catch |finally )\b/
@@ -47,22 +47,48 @@ function totalMessageText(messages: OpenAIMessage[]): string {
  * This is a deterministic heuristic — no ML.
  */
 export function classifyRequest(request: RoutingRequest): RoutingTier {
+  return classifyRequestDetailed(request).tier
+}
+
+export function classifyRequestDetailed(request: RoutingRequest): ClassificationDetail {
   const lastUserMsg = getLastUserMessage(request.messages)
   const allText = totalMessageText(request.messages)
   const totalTokens = estimateTokens(allText)
+  const reasons: string[] = []
 
   // CODE: explicit code fences, language keywords, or coding task descriptions
-  if (
-    CODE_FENCE_RE.test(allText) ||
-    CODE_KEYWORDS.test(lastUserMsg) ||
-    CODE_TASK_KEYWORDS.test(lastUserMsg)
-  ) {
-    return 'CODE'
+  if (CODE_FENCE_RE.test(allText)) {
+    reasons.push('Detected a code fence in the conversation')
+  }
+  if (CODE_KEYWORDS.test(lastUserMsg)) {
+    reasons.push('Matched code-oriented keywords in the latest user message')
+  }
+  if (CODE_TASK_KEYWORDS.test(lastUserMsg)) {
+    reasons.push('Matched a coding-task phrase in the latest user message')
+  }
+  if (reasons.length > 0) {
+    return {
+      tier: 'CODE',
+      totalTokens,
+      lastUserMessage: lastUserMsg,
+      reasons,
+    }
   }
 
   // COMPLEX: analysis keywords or very long context
-  if (COMPLEX_KEYWORDS.test(lastUserMsg) || totalTokens > 2000) {
-    return 'COMPLEX'
+  if (COMPLEX_KEYWORDS.test(lastUserMsg)) {
+    reasons.push('Matched an analysis or research keyword in the latest user message')
+  }
+  if (totalTokens > 2000) {
+    reasons.push(`Estimated conversation size is large (~${totalTokens} tokens)`)
+  }
+  if (reasons.length > 0) {
+    return {
+      tier: 'COMPLEX',
+      totalTokens,
+      lastUserMessage: lastUserMsg,
+      reasons,
+    }
   }
 
   // SIMPLE: short greeting/Q&A
@@ -70,8 +96,25 @@ export function classifyRequest(request: RoutingRequest): RoutingTier {
     totalTokens < 200 &&
     (SIMPLE_GREETING_RE.test(lastUserMsg.trim()) || SIMPLE_QA_RE.test(lastUserMsg.trim()))
   ) {
-    return 'SIMPLE'
+    if (SIMPLE_GREETING_RE.test(lastUserMsg.trim())) {
+      reasons.push('Matched a short greeting or acknowledgement')
+    }
+    if (SIMPLE_QA_RE.test(lastUserMsg.trim())) {
+      reasons.push('Matched a short factual Q&A prompt')
+    }
+    reasons.push(`Estimated conversation size is short (~${totalTokens} tokens)`)
+    return {
+      tier: 'SIMPLE',
+      totalTokens,
+      lastUserMessage: lastUserMsg,
+      reasons,
+    }
   }
 
-  return 'STANDARD'
+  return {
+    tier: 'STANDARD',
+    totalTokens,
+    lastUserMessage: lastUserMsg,
+    reasons: ['No specific CODE, COMPLEX, or SIMPLE rule matched; using STANDARD'],
+  }
 }

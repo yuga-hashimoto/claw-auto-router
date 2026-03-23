@@ -31,13 +31,34 @@ export function scoreCandidate(
   configPosition: number,
   modelTiers?: Record<string, RoutingTier>,
 ): number {
+  return explainCandidateScore(model, tier, configPosition, modelTiers).score
+}
+
+export function explainCandidateScore(
+  model: NormalizedModel,
+  tier: RoutingTier,
+  configPosition: number,
+  modelTiers?: Record<string, RoutingTier>,
+): { score: number; reasons: string[] } {
   // Explicit tier assignment overrides heuristics
   const assignedTier = modelTiers?.[model.id]
   if (assignedTier !== undefined) {
     if (assignedTier === tier) {
-      return 500 + (100 - configPosition) // explicit match: always wins
+      return {
+        score: 500 + (100 - configPosition),
+        reasons: [
+          `Explicit tier assignment matches ${tier}`,
+          `Config order base score ${100 - configPosition}`,
+        ],
+      }
     } else {
-      return -500 + (100 - configPosition) // wrong tier: pushed to bottom but kept as fallback
+      return {
+        score: -500 + (100 - configPosition),
+        reasons: [
+          `Explicit tier assignment prefers ${assignedTier}, so this model is deprioritized for ${tier}`,
+          `Config order base score ${100 - configPosition}`,
+        ],
+      }
     }
   }
 
@@ -45,36 +66,70 @@ export function scoreCandidate(
   // Base score: position in config (primary gets 100, fallback[0] gets 99, etc.)
   const base = 100 - configPosition
   let bonus = 0
+  const reasons = [`Config order base score ${base}`]
 
   const nameMatches = (re: RegExp): boolean =>
     re.test(model.name) || re.test(model.modelId)
 
   switch (tier) {
     case 'CODE':
-      if (model.reasoning) bonus += 30
-      if (nameMatches(CODER_MODEL_RE)) bonus += 25
-      if (nameMatches(SMALL_MODEL_RE)) bonus -= 10 // small models for code tend to be weaker
+      if (model.reasoning) {
+        bonus += 30
+        reasons.push('+30 reasoning model bonus for CODE')
+      }
+      if (nameMatches(CODER_MODEL_RE)) {
+        bonus += 25
+        reasons.push('+25 coder-model keyword bonus for CODE')
+      }
+      if (nameMatches(SMALL_MODEL_RE)) {
+        bonus -= 10
+        reasons.push('-10 small/fast model penalty for CODE')
+      }
       break
 
     case 'COMPLEX':
-      if (model.reasoning) bonus += 25
-      if (model.contextWindow >= 200_000) bonus += 20
-      else if (model.contextWindow >= 100_000) bonus += 10
-      if (nameMatches(SMALL_MODEL_RE)) bonus -= 15 // complex tasks need full-power models
+      if (model.reasoning) {
+        bonus += 25
+        reasons.push('+25 reasoning model bonus for COMPLEX')
+      }
+      if (model.contextWindow >= 200_000) {
+        bonus += 20
+        reasons.push('+20 very large context window bonus for COMPLEX')
+      } else if (model.contextWindow >= 100_000) {
+        bonus += 10
+        reasons.push('+10 large context window bonus for COMPLEX')
+      }
+      if (nameMatches(SMALL_MODEL_RE)) {
+        bonus -= 15
+        reasons.push('-15 small/fast model penalty for COMPLEX')
+      }
       break
 
     case 'SIMPLE':
-      if (nameMatches(SMALL_MODEL_RE)) bonus += 25 // fast/cheap is fine for simple tasks
-      if (model.reasoning) bonus -= 10 // reasoning overhead not needed
-      if (model.contextWindow >= 200_000) bonus -= 5 // overkill
+      if (nameMatches(SMALL_MODEL_RE)) {
+        bonus += 25
+        reasons.push('+25 fast/small model bonus for SIMPLE')
+      }
+      if (model.reasoning) {
+        bonus -= 10
+        reasons.push('-10 reasoning overhead penalty for SIMPLE')
+      }
+      if (model.contextWindow >= 200_000) {
+        bonus -= 5
+        reasons.push('-5 oversized context penalty for SIMPLE')
+      }
       break
 
     case 'STANDARD':
-      // No bonuses — respect pure config order
+      reasons.push('STANDARD keeps pure config order without heuristic bonuses')
       break
   }
 
-  return base + bonus
+  if (bonus === 0 && tier !== 'STANDARD') {
+    reasons.push('No tier-specific bonuses or penalties applied')
+  }
+
+  return { score: base + bonus, reasons }
 }
 
 /** Score and sort candidates for a given tier (highest score first) */

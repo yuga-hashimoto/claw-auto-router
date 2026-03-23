@@ -2,7 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../../src/server/app.js'
 import { ProviderRegistry } from '../../src/providers/registry.js'
 
-const app = buildApp({ config: {}, registry: new ProviderRegistry([]), logLevel: 'silent' })
+const app = buildApp({
+  config: {},
+  registry: new ProviderRegistry([]),
+  logLevel: 'silent',
+  decisionLogEnabled: false,
+})
 
 describe('GET /stats', () => {
   beforeAll(() => app.ready())

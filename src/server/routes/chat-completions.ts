@@ -2,9 +2,11 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import type { RawConfig } from '../../config/schema.js'
 import type { RouterConfig } from '../../config/router-config.js'
+import { appendDecisionLogEntry, buildDecisionLogEntry } from '../../decision-log.js'
 import type { OpenClawGatewayContext } from '../../openclaw/gateway.js'
 import type { ProviderRegistry } from '../../providers/registry.js'
 import type { StatsCollector } from '../../stats/collector.js'
+import { classifyRequestDetailed } from '../../router/classifier.js'
 import { route } from '../../router/router.js'
 import { executeWithFallback } from '../../proxy/fallback.js'
 import type { AdapterRequest } from '../../adapters/types.js'
@@ -33,6 +35,7 @@ interface RouteContext {
   getRegistry: () => ProviderRegistry
   getRouterConfig: () => RouterConfig
   getGatewayContext: () => OpenClawGatewayContext | undefined
+  getDecisionLogEnabled: () => boolean
 }
 
 export function registerChatCompletionsRoute(
@@ -62,6 +65,12 @@ export function registerChatCompletionsRoute(
     const registry = context.getRegistry()
     const routerConfig = context.getRouterConfig()
     const gatewayContext = context.getGatewayContext()
+    const decisionLogEnabled = context.getDecisionLogEnabled()
+    const classification = classifyRequestDetailed({
+      model: body.model,
+      messages: body.messages as OpenAIMessage[],
+      stream: body.stream,
+    })
 
     const routingRequest = {
       model: body.model,
@@ -69,8 +78,12 @@ export function registerChatCompletionsRoute(
       stream: body.stream,
     }
 
+    let routeResult:
+      | ReturnType<typeof route>
+      | undefined
+
     try {
-      const routeResult = route(routingRequest, config, registry, routerConfig)
+      routeResult = route(routingRequest, config, registry, routerConfig)
 
       app.log.debug(
         {
@@ -116,6 +129,24 @@ export function registerChatCompletionsRoute(
         success: true,
         fallbackUsed: usedFallback,
       })
+      if (decisionLogEnabled) {
+        appendDecisionLogEntry(
+          buildDecisionLogEntry({
+            requestId: request.id,
+            requestedModel: body.model,
+            resolvedModel: proxyResult.finalModel.id,
+            success: true,
+            fallbackUsed: usedFallback,
+            stream: body.stream ?? false,
+            totalDurationMs: durationMs,
+            messageCount: body.messages.length,
+            classification: routeResult.decision?.classification ?? classification,
+            candidates: routeResult.decision?.candidates ?? [],
+            attempts: proxyResult.attempts,
+          }),
+          configPath,
+        )
+      }
 
       // Streaming response
       if (proxyResult.streaming && proxyResult.stream !== undefined) {
@@ -148,6 +179,25 @@ export function registerChatCompletionsRoute(
           success: false,
           fallbackUsed: false,
         })
+        if (decisionLogEnabled) {
+          appendDecisionLogEntry(
+            buildDecisionLogEntry({
+              requestId: request.id,
+              requestedModel: body.model,
+              resolvedModel: 'none',
+              success: false,
+              fallbackUsed: false,
+              stream: body.stream ?? false,
+              totalDurationMs: durationMs,
+              messageCount: body.messages.length,
+              classification,
+              candidates: [],
+              attempts: [],
+              error: err.message,
+            }),
+            configPath,
+          )
+        }
         return reply.status(503).send({
           error: { message: err.message, type: 'no_candidates', code: 503 },
         })
@@ -164,6 +214,25 @@ export function registerChatCompletionsRoute(
           success: false,
           fallbackUsed: err.attempts.length > 1,
         })
+        if (decisionLogEnabled) {
+          appendDecisionLogEntry(
+            buildDecisionLogEntry({
+              requestId: request.id,
+              requestedModel: body.model,
+              resolvedModel: err.attempts[err.attempts.length - 1]?.model.id ?? 'unknown',
+              success: false,
+              fallbackUsed: err.attempts.length > 1,
+              stream: body.stream ?? false,
+              totalDurationMs: durationMs,
+              messageCount: body.messages.length,
+              classification: routeResult?.decision?.classification ?? classification,
+              candidates: routeResult?.decision?.candidates ?? [],
+              attempts: err.attempts,
+              error: err.message,
+            }),
+            configPath,
+          )
+        }
         return reply.status(502).send({
           error: {
             message: err.message,
@@ -186,6 +255,25 @@ export function registerChatCompletionsRoute(
         success: false,
         fallbackUsed: false,
       })
+      if (decisionLogEnabled) {
+        appendDecisionLogEntry(
+          buildDecisionLogEntry({
+            requestId: request.id,
+            requestedModel: body.model,
+            resolvedModel: 'unknown',
+            success: false,
+            fallbackUsed: false,
+            stream: body.stream ?? false,
+            totalDurationMs: durationMs,
+            messageCount: body.messages.length,
+            classification: routeResult?.decision?.classification ?? classification,
+            candidates: routeResult?.decision?.candidates ?? [],
+            attempts: [],
+            error: err instanceof Error ? err.message : 'Unexpected internal error',
+          }),
+          configPath,
+        )
+      }
       return reply.status(500).send({
         error: { message: 'Internal server error', type: 'internal_error', code: 500 },
       })

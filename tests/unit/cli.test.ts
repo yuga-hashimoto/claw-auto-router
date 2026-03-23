@@ -47,6 +47,15 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs(['--help'])).toEqual({ command: 'serve', help: true })
   })
 
+  it('parses logs mode flags', () => {
+    expect(parseCliArgs(['logs', '--limit', '15', '--json'])).toEqual({
+      command: 'logs',
+      help: false,
+      limit: 15,
+      json: true,
+    })
+  })
+
   it('throws for invalid integer values', () => {
     expect(() => parseCliArgs(['--port', 'abc'])).toThrow(
       'Invalid value for --port: expected an integer, received "abc"',
@@ -64,6 +73,7 @@ describe('getHelpText', () => {
 
     expect(helpText).toContain('claw-auto-router')
     expect(helpText).toContain('setup')
+    expect(helpText).toContain('logs')
     expect(helpText).toContain('--config <path>')
     expect(helpText).toContain('--router-config <path>')
   })

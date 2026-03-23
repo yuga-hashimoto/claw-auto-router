@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { buildApp } from '../../src/server/app.js'
+import { readDecisionLogEntries } from '../../src/decision-log.js'
 import { ProviderRegistry } from '../../src/providers/registry.js'
 import type { NormalizedModel } from '../../src/providers/types.js'
 import type { RawConfig } from '../../src/config/schema.js'
@@ -55,7 +59,7 @@ const registry = new ProviderRegistry([
   makeModel('test-provider/fallback-model'),
 ])
 
-const app = buildApp({ config, registry, logLevel: 'silent' })
+const app = buildApp({ config, registry, logLevel: 'silent', decisionLogEnabled: false })
 
 describe('POST /v1/chat/completions', () => {
   beforeAll(() => app.ready())
@@ -106,5 +110,41 @@ describe('POST /v1/chat/completions', () => {
       },
     })
     expect(response.statusCode).toBe(200)
+  })
+
+  it('writes a routing decision log entry when enabled', async () => {
+    const tempDir = join(tmpdir(), `chat-log-test-${Date.now()}`)
+    mkdirSync(tempDir, { recursive: true })
+    const configPath = join(tempDir, 'moltbot.json')
+    writeFileSync(configPath, '{}\n', 'utf-8')
+
+    const loggingApp = buildApp({
+      config,
+      registry,
+      configPath,
+      logLevel: 'silent',
+      decisionLogEnabled: true,
+    })
+    await loggingApp.ready()
+
+    const response = await loggingApp.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      payload: {
+        model: 'auto',
+        messages: [{ role: 'user', content: 'Please refactor this function.' }],
+      },
+    })
+
+    expect(response.statusCode).toBe(200)
+
+    const entries = readDecisionLogEntries(5, configPath)
+    expect(entries[0]?.classification.tier).toBe('CODE')
+    expect(entries[0]?.classification.lastUserMessage).toContain('Please refactor this function.')
+    expect(entries[0]?.candidates[0]?.modelId).toBe('test-provider/primary-model')
+    expect(entries[0]?.attempts[0]?.modelId).toBe('test-provider/primary-model')
+
+    await loggingApp.close()
+    rmSync(tempDir, { recursive: true, force: true })
   })
 })

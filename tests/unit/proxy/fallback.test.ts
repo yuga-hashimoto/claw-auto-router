@@ -31,8 +31,8 @@ const model1 = makeModel('kimi-coding/k2p5')
 const model2 = makeModel('nvidia/qwen/model')
 
 const routeResult: RouteResult = {
-  winner: { model: model1, position: 0, reason: 'primary' },
-  fallbacks: [{ model: model2, position: 1, reason: 'fallback' }],
+  winner: { model: model1, position: 0, configPosition: 0, reason: 'primary' },
+  fallbacks: [{ model: model2, position: 1, configPosition: 1, reason: 'fallback' }],
   tier: 'STANDARD',
 }
 
