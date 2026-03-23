@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-24
+
+### Fixed
+- Stabilize `claw-auto-router service restart` by waiting for launchd unload/load transitions before re-bootstrap
+
 ## [0.5.0] - 2026-03-24
 
 ### Added
@@ -65,7 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial OpenClaw-compatible model router implementation
 
-[Unreleased]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.4.0...v0.4.1
 [0.3.1]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.3.0...v0.3.1

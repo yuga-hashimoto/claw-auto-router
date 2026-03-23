@@ -47,6 +47,8 @@ interface LaunchdPaths {
 }
 
 const LAUNCHD_LABEL = 'ai.openclaw.claw-auto-router'
+const SERVICE_STATE_TIMEOUT_MS = 5_000
+const SERVICE_STATE_POLL_MS = 125
 
 function isSupportedPlatform(): boolean {
   return process.platform === 'darwin'
@@ -94,6 +96,12 @@ function getGuiDomain(): string {
 
 function getServiceTarget(): string {
   return `${getGuiDomain()}/${LAUNCHD_LABEL}`
+}
+
+function sleepMs(durationMs: number): void {
+  const shared = new SharedArrayBuffer(4)
+  const view = new Int32Array(shared)
+  Atomics.wait(view, 0, 0, durationMs)
 }
 
 function formatLaunchctlError(args: string[], stdout: string, stderr: string): string {
@@ -167,6 +175,40 @@ function normalizeExecutablePath(commandPath: string): ServiceCommandSpec {
   return {
     program: resolvedCommandPath,
     args: [],
+  }
+}
+
+function waitForLoadedState(expectedLoaded: boolean, timeoutMs = SERVICE_STATE_TIMEOUT_MS): BackgroundServiceStatus {
+  const deadline = Date.now() + timeoutMs
+
+  while (true) {
+    const status = getBackgroundServiceStatus()
+    if (status.loaded === expectedLoaded) {
+      return status
+    }
+
+    if (Date.now() >= deadline) {
+      return status
+    }
+
+    sleepMs(SERVICE_STATE_POLL_MS)
+  }
+}
+
+function waitForRunningState(timeoutMs = SERVICE_STATE_TIMEOUT_MS): BackgroundServiceStatus {
+  const deadline = Date.now() + timeoutMs
+
+  while (true) {
+    const status = getBackgroundServiceStatus()
+    if (status.running) {
+      return status
+    }
+
+    if (Date.now() >= deadline) {
+      return status
+    }
+
+    sleepMs(SERVICE_STATE_POLL_MS)
   }
 }
 
@@ -349,7 +391,7 @@ export function startBackgroundService(): BackgroundServiceStatus {
   }
 
   return {
-    ...getBackgroundServiceStatus(),
+    ...waitForRunningState(),
     detail: 'launchd service started',
   }
 }
@@ -371,7 +413,7 @@ export function stopBackgroundService(): BackgroundServiceStatus {
   runLaunchctl(['bootout', getServiceTarget()], { allowFailure: true })
 
   return {
-    ...getBackgroundServiceStatus(),
+    ...waitForLoadedState(false),
     loaded: false,
     running: false,
     detail: 'launchd service stopped',
@@ -392,12 +434,10 @@ export function restartBackgroundService(): BackgroundServiceStatus {
     }
   }
 
-  runLaunchctl(['bootout', getServiceTarget()], { allowFailure: true })
-  runLaunchctl(['bootstrap', getGuiDomain(), status.plistPath])
-  runLaunchctl(['kickstart', '-k', getServiceTarget()], { allowFailure: true })
-
+  stopBackgroundService()
+  const started = startBackgroundService()
   return {
-    ...getBackgroundServiceStatus(),
+    ...started,
     detail: 'launchd service restarted',
   }
 }
