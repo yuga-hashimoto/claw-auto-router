@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-24
+
+### Added
+- Live `/dashboard` view for routing volume, classifier mix, spend/savings, recent history, and active session overrides
+- Conversation-scoped natural-language routing controls such as `use opus`, `prefer code`, `thinking high`, and `reset routing`
+- Session override tracking in `/stats`, including recent override summaries
+- Cost estimation against a configurable dashboard baseline model
+- Native Anthropic thinking support for direct `anthropic-messages` models, including adaptive thinking on Claude 4.6 and interleaved-thinking headers where applicable
+
+### Fixed
+- Preserve model cost metadata during provider normalization and router-config imports
+- Extract Anthropic text responses correctly when thinking blocks appear before text blocks
+
 ## [0.6.0] - 2026-03-24
 
 ### Added
@@ -80,7 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial OpenClaw-compatible model router implementation
 
-[Unreleased]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/yuga-hashimoto/claw-auto-router/compare/v0.4.1...v0.5.0

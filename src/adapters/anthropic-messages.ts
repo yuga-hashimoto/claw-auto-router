@@ -5,6 +5,7 @@ import type { OpenAIMessage } from '../router/types.js'
 import { resolveModelCredentials } from '../providers/oauth.js'
 
 const ANTHROPIC_VERSION = '2023-06-01'
+const INTERLEAVED_THINKING_BETA = 'interleaved-thinking-2025-05-14'
 
 interface AnthropicMessage {
   role: 'user' | 'assistant'
@@ -24,6 +25,12 @@ interface AnthropicRequest {
   system?: string
   temperature?: number
   stream?: boolean
+  thinking?: {
+    type: 'enabled' | 'adaptive'
+    budget_tokens?: number
+    effort?: 'low' | 'medium' | 'high'
+  }
+  [key: string]: unknown
 }
 
 /**
@@ -46,12 +53,16 @@ function toAnthropicRequest(model: NormalizedModel, request: AdapterRequest): An
     // Skip 'function' and 'tool' roles — not supported in v1
   }
 
+  const thinking = buildAnthropicThinking(model, request)
+
   return {
+    ...(request.extra ?? {}),
     model: model.modelId,
     messages,
-    max_tokens: request.maxTokens ?? model.maxTokens,
+    max_tokens: resolveAnthropicMaxTokens(model, request, thinking),
     ...(systemPrompt !== undefined ? { system: systemPrompt } : {}),
-    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+    ...(request.temperature !== undefined && thinking === undefined ? { temperature: request.temperature } : {}),
+    ...(thinking !== undefined ? { thinking } : {}),
     ...(request.stream ? { stream: true } : {}),
   }
 }
@@ -87,8 +98,13 @@ function extractAnthropicContent(msg: OpenAIMessage): string | AnthropicContentB
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toOpenAIResponse(anthropicResponse: any, requestId: string): any {
-  const content = anthropicResponse?.content?.[0]
-  const text = content?.type === 'text' ? content.text : ''
+  const text = Array.isArray(anthropicResponse?.content)
+    ? anthropicResponse.content
+        .filter((content: { type?: string; text?: string } | undefined) => content?.type === 'text')
+        .map((content: { text?: string }) => content.text ?? '')
+        .filter((content: string) => content !== '')
+        .join('\n\n')
+    : ''
 
   return {
     id: anthropicResponse?.id ?? requestId,
@@ -149,6 +165,7 @@ export async function callAnthropic(
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': ANTHROPIC_VERSION,
+        ...(request.thinking?.interleaved === true ? { 'anthropic-beta': INTERLEAVED_THINKING_BETA } : {}),
         ...(apiKey !== undefined
           ? model.authHeader === true
             ? { Authorization: `Bearer ${apiKey}` }
@@ -195,6 +212,61 @@ export async function callAnthropic(
     headers,
     streaming: false,
   }
+}
+
+function buildAnthropicThinking(
+  model: NormalizedModel,
+  request: AdapterRequest,
+): AnthropicRequest['thinking'] | undefined {
+  const thinking = request.thinking
+  if (thinking === undefined) {
+    return undefined
+  }
+
+  if (thinking.effort !== undefined && supportsAdaptiveThinking(model)) {
+    return {
+      type: 'adaptive',
+      effort: thinking.effort,
+    }
+  }
+
+  return {
+    type: 'enabled',
+    budget_tokens: resolveThinkingBudget(model, request, thinking.budgetTokens),
+  }
+}
+
+function resolveAnthropicMaxTokens(
+  model: NormalizedModel,
+  request: AdapterRequest,
+  thinking: AnthropicRequest['thinking'] | undefined,
+): number {
+  const configuredMaxTokens = request.maxTokens ?? model.maxTokens
+  if (thinking?.type !== 'enabled' || thinking.budget_tokens === undefined || request.thinking?.interleaved === true) {
+    return configuredMaxTokens
+  }
+
+  return Math.max(configuredMaxTokens, thinking.budget_tokens + 1)
+}
+
+function resolveThinkingBudget(
+  model: NormalizedModel,
+  request: AdapterRequest,
+  requestedBudget: number | undefined,
+): number {
+  const defaultBudget = 4096
+  const maxTokens = request.maxTokens ?? model.maxTokens
+  const desiredBudget = requestedBudget ?? defaultBudget
+
+  if (request.thinking?.interleaved === true) {
+    return Math.max(1, Math.min(desiredBudget, model.maxTokens))
+  }
+
+  return Math.max(1, Math.min(desiredBudget, Math.max(1, maxTokens - 1), Math.max(1, model.maxTokens - 1)))
+}
+
+function supportsAdaptiveThinking(model: NormalizedModel): boolean {
+  return /claude-(?:opus|sonnet)-4-6(?:$|[-_])/.test(model.modelId)
 }
 
 /**

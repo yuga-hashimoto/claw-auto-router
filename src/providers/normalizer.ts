@@ -89,6 +89,7 @@ export function normalizeConfig(
         supportsImages: rawModel.input?.includes('image') ?? false,
         contextWindow: rawModel.contextWindow ?? 128000,
         maxTokens: rawModel.maxTokens ?? 4096,
+        ...(rawModel.cost !== undefined ? { cost: rawModel.cost } : {}),
         ...(alias !== undefined ? { alias } : {}),
         transport: providerTransport,
         available: providerAvailable,
@@ -144,10 +145,12 @@ export function normalizeConfig(
     const providerId = ref.slice(0, slashIdx)
     const modelId = ref.slice(slashIdx + 1)
     const provider = providerMap.get(providerId)
+    const sourceProvider = rawProviders[providerId]
 
     if (provider !== undefined) {
       // Provider exists but model wasn't in its models list — auto-add with minimal metadata
       const alias = agentModels[ref]?.alias
+      const sourceModel = sourceProvider?.models.find((candidate) => candidate.id === modelId)
       const autoModel: NormalizedModel = {
         id: ref,
         providerId,
@@ -160,6 +163,9 @@ export function normalizeConfig(
         supportsImages: false,
         contextWindow: 128000,
         maxTokens: 4096,
+        ...(sourceModel?.cost !== undefined
+          ? { cost: sourceModel.cost }
+          : {}),
         ...(alias !== undefined ? { alias } : {}),
         transport: provider.transport,
         available: provider.available,

@@ -15,6 +15,9 @@ claw-auto-router:
 - Exposes an OpenAI-compatible API so OpenClaw treats it like a normal provider
 - Routes requests to the most suitable model based on content (tier-based heuristics or optional RouterAI classification + explicit assignments)
 - Falls back automatically when a provider fails
+- Tracks routing stats, estimated spend/savings, and active session overrides in a live dashboard
+- Lets users switch models or tiers mid-conversation with natural-language commands such as `use opus` or `prefer code`
+- Supports native Anthropic thinking controls for direct `anthropic-messages` models
 - Delegates imported OpenClaw models back through the OpenClaw Gateway instead of reimplementing provider OAuth here
 
 ---
@@ -210,6 +213,12 @@ claw-auto-router logs --limit 20
 claw-auto-router logs --json
 ```
 
+Open the live dashboard:
+
+```bash
+open http://127.0.0.1:43123/dashboard
+```
+
 Background service management on macOS:
 
 ```bash
@@ -349,6 +358,10 @@ Example:
     "model": "google/gemini-3-flash-preview",
     "timeoutMs": 8000
   },
+  "dashboard": {
+    "baselineModel": "openai-codex/gpt-5.4",
+    "refreshSeconds": 5
+  },
   "extraProviders": {
     "openrouter": {
       "baseUrl": "https://openrouter.ai/api/v1",
@@ -365,10 +378,43 @@ Example:
 | `modelTiers` | Explicit tier per model — overrides heuristic scoring. Set by setup wizard. |
 | `tierPriority` | Preferred model order within each tier (explicit beats score). Setup wizard can write this too. |
 | `routerAI` | Optional AI classifier for tier decisions. If it fails, routing falls back to heuristics automatically. |
+| `dashboard` | Baseline model + refresh interval for `/dashboard` estimated spend/savings. |
 | `extraProviders` | Providers not in your OpenClaw config (e.g. openrouter, openai-codex, google-gemini-cli) |
 | `denylist` | Models to exclude from routing |
 
 `claw-auto-router setup` also writes `openClawIntegration` metadata here so the router can remember your original OpenClaw primary/fallback chain without routing to itself.
+
+## Conversation controls
+
+You can change routing in the middle of a conversation by sending a short user message. When claw-auto-router can identify a stable session (`session_id`, `user`, `x-session-id`, `x-openclaw-thread-id`, or a derived conversation fingerprint), the override is saved for that conversation until you clear it.
+
+Examples:
+
+```text
+use opus
+use gpt-5.4
+use auto again
+prefer code
+clear tier
+thinking high
+thinking off
+reset routing
+```
+
+What these do:
+
+- `use opus` / `use gpt-5.4` locks that conversation to a specific model
+- `use auto again` returns to normal auto-routing
+- `prefer code` forces the `CODE` tier for that conversation
+- `thinking high` enables a conversation-level thinking override
+- `reset routing` clears all conversation overrides at once
+
+Current thinking support:
+
+- Direct `anthropic-messages` models use native Anthropic thinking parameters
+- Claude Sonnet 4.6 / Opus 4.6 use adaptive thinking when you set an effort level
+- Earlier direct Claude models use extended thinking with a budget and optional interleaved-thinking beta header
+- Imported OpenClaw Gateway-backed models still route normally, but native Anthropic thinking parameters are not injected through the gateway path yet
 
 ---
 
@@ -400,7 +446,17 @@ Liveness check with model counts.
 
 ### `GET /stats`
 
-Routing stats: requests, per-model counts, fallback rate, average latency, config status.
+Routing stats: requests, per-model counts, fallback rate, classifier modes, active session overrides, config status, and estimated spend/savings when model pricing is known.
+
+### `GET /dashboard`
+
+Live HTML dashboard on top of `/stats`.
+
+- Request volume, success rate, fallback rate
+- Estimated spend and savings versus a baseline model
+- Tier and classifier distribution
+- Per-model usage and recent routing history
+- Active conversation overrides
 
 ### `POST /reload-config`
 
@@ -505,6 +561,9 @@ docker run -p 43123:43123 \
 
 **502 All providers failed**
 → All providers returned errors. Check `GET /stats` for per-model failure counts and server logs for specific HTTP errors.
+
+**Natural-language model switch did not stick**
+→ Send a stable session identifier (`session_id`, `user`, or `x-session-id`) so claw-auto-router can remember the override across turns.
 
 **Wizard doesn't appear**
 → claw-auto-router only runs the wizard when stdin/stdout are TTYs. In Docker or CI, set `modelTiers` in `router.config.json` manually.

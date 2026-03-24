@@ -13,6 +13,13 @@ export type ApiKeyResolution =
   | { status: 'env_missing'; envVar: string }
   | { status: 'oauth'; reason: string }
 
+export interface ModelCost {
+  input: number
+  output: number
+  cacheRead?: number | undefined
+  cacheWrite?: number | undefined
+}
+
 export interface NormalizedModel {
   /** Composite ID: "providerId/modelId" */
   id: string
@@ -37,6 +44,7 @@ export interface NormalizedModel {
   oauthProjectId?: string | undefined
   oauthAccountId?: string | undefined
   authHeader?: boolean | undefined
+  cost?: ModelCost | undefined
 }
 
 export interface NormalizedProvider {

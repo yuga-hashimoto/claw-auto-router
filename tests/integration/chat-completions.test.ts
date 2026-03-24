@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -8,28 +8,21 @@ import { ProviderRegistry } from '../../src/providers/registry.js'
 import type { NormalizedModel } from '../../src/providers/types.js'
 import type { RawConfig } from '../../src/config/schema.js'
 
+const { callOpenAIMock, callAnthropicMock } = vi.hoisted(() => ({
+  callOpenAIMock: vi.fn(),
+  callAnthropicMock: vi.fn(),
+}))
+
 // Mock the adapters so we don't hit real network
 vi.mock('../../src/adapters/openai-completions.js', () => ({
-  callOpenAI: vi.fn().mockResolvedValue({
-    body: {
-      id: 'chatcmpl-test',
-      object: 'chat.completion',
-      created: 1700000000,
-      model: 'test-model',
-      choices: [{ index: 0, message: { role: 'assistant', content: 'Hello!' }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-    },
-    statusCode: 200,
-    headers: {},
-    streaming: false,
-  }),
+  callOpenAI: callOpenAIMock,
 }))
 
 vi.mock('../../src/adapters/anthropic-messages.js', () => ({
-  callAnthropic: vi.fn(),
+  callAnthropic: callAnthropicMock,
 }))
 
-const makeModel = (id: string): NormalizedModel => ({
+const makeModel = (id: string, overrides: Partial<NormalizedModel> = {}): NormalizedModel => ({
   id,
   providerId: id.split('/')[0] ?? 'p',
   modelId: id.split('/').slice(1).join('/'),
@@ -41,6 +34,7 @@ const makeModel = (id: string): NormalizedModel => ({
   supportsImages: false,
   contextWindow: 128000,
   maxTokens: 4096,
+  ...overrides,
 })
 
 const config: RawConfig = {
@@ -62,6 +56,48 @@ const registry = new ProviderRegistry([
 const app = buildApp({ config, registry, logLevel: 'silent', decisionLogEnabled: false })
 
 describe('POST /v1/chat/completions', () => {
+  beforeEach(() => {
+    callOpenAIMock.mockReset()
+    callAnthropicMock.mockReset()
+
+    callOpenAIMock.mockImplementation(async (model: NormalizedModel) => ({
+      body: {
+        id: 'chatcmpl-test',
+        object: 'chat.completion',
+        created: 1700000000,
+        model: model.modelId,
+        choices: [{ index: 0, message: { role: 'assistant', content: 'Hello!' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      },
+      statusCode: 200,
+      headers: {},
+      streaming: false,
+    }))
+
+    callAnthropicMock.mockImplementation(async (_model: NormalizedModel, request: { thinking?: unknown }) => ({
+      body: {
+        id: 'chatcmpl-anthropic',
+        object: 'chat.completion',
+        created: 1700000000,
+        model: 'anthropic-test-model',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: request.thinking !== undefined ? 'Thinking applied' : 'Anthropic hello!',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+      },
+      statusCode: 200,
+      headers: {},
+      streaming: false,
+    }))
+  })
+
   beforeAll(() => app.ready())
   afterAll(() => app.close())
 
@@ -110,6 +146,109 @@ describe('POST /v1/chat/completions', () => {
       },
     })
     expect(response.statusCode).toBe(200)
+  })
+
+  it('captures conversation-level model override commands and applies them to later auto-routed requests', async () => {
+    const control = await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      headers: { 'x-session-id': 'conversation-1' },
+      payload: {
+        model: 'auto',
+        messages: [{ role: 'user', content: 'use fallback model' }],
+      },
+    })
+
+    expect(control.statusCode).toBe(200)
+    expect(control.json().choices[0].message.content).toContain('Routing locked to model test-provider/fallback-model.')
+    expect(callOpenAIMock).not.toHaveBeenCalled()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      headers: { 'x-session-id': 'conversation-1' },
+      payload: {
+        model: 'auto',
+        messages: [{ role: 'user', content: 'Hello again' }],
+      },
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect((callOpenAIMock.mock.calls.at(-1)?.[0] as NormalizedModel | undefined)?.id).toBe(
+      'test-provider/fallback-model',
+    )
+
+    const statsResponse = await app.inject({ method: 'GET', url: '/stats' })
+    expect(statsResponse.statusCode).toBe(200)
+    expect(statsResponse.json().sessionStats.recentOverrides[0].explicitModelId).toBe(
+      'test-provider/fallback-model',
+    )
+  })
+
+  it('captures conversation-level thinking commands and forwards them to anthropic models', async () => {
+    const anthropicConfig: RawConfig = {
+      agents: {
+        defaults: {
+          model: {
+            primary: 'anthropic/claude-sonnet-4-6',
+            fallbacks: [],
+          },
+        },
+      },
+    }
+
+    const anthropicRegistry = new ProviderRegistry([
+      makeModel('anthropic/claude-sonnet-4-6', {
+        api: 'anthropic-messages',
+        reasoning: true,
+      }),
+    ])
+
+    const anthropicApp = buildApp({
+      config: anthropicConfig,
+      registry: anthropicRegistry,
+      logLevel: 'silent',
+      decisionLogEnabled: false,
+    })
+
+    await anthropicApp.ready()
+
+    try {
+      const control = await anthropicApp.inject({
+        method: 'POST',
+        url: '/v1/chat/completions',
+        headers: { 'x-session-id': 'conversation-2' },
+        payload: {
+          model: 'auto',
+          messages: [{ role: 'user', content: 'thinking high' }],
+        },
+      })
+
+      expect(control.statusCode).toBe(200)
+      expect(control.json().choices[0].message.content).toContain('Thinking override updated')
+
+      const response = await anthropicApp.inject({
+        method: 'POST',
+        url: '/v1/chat/completions',
+        headers: { 'x-session-id': 'conversation-2' },
+        payload: {
+          model: 'auto',
+          messages: [{ role: 'user', content: 'Please solve this carefully.' }],
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      expect(callAnthropicMock.mock.calls).toHaveLength(1)
+      const anthropicRequest = callAnthropicMock.mock.calls[0]?.[1] as
+        | { thinking?: { effort?: string; source?: string } }
+        | undefined
+      expect(anthropicRequest?.thinking).toMatchObject({
+        effort: 'high',
+        source: 'session',
+      })
+    } finally {
+      await anthropicApp.close()
+    }
   })
 
   it('writes a routing decision log entry when enabled', async () => {

@@ -5,12 +5,14 @@ import type { RouterConfig } from '../config/router-config.js'
 import { ProviderRegistry } from '../providers/registry.js'
 import { StatsCollector } from '../stats/collector.js'
 import type { OpenClawGatewayContext } from '../openclaw/gateway.js'
+import { SessionStore } from '../session-store.js'
 import { registerErrorHandler } from './plugins/error-handler.js'
 import { registerHealthRoute } from './routes/health.js'
 import { registerModelsRoute } from './routes/models.js'
 import { registerChatCompletionsRoute } from './routes/chat-completions.js'
 import { registerStatsRoute } from './routes/stats.js'
 import { registerReloadRoute } from './routes/reload-config.js'
+import { registerDashboardRoute } from './routes/dashboard.js'
 
 export interface AppOptions {
   config: RawConfig
@@ -33,6 +35,7 @@ export function buildApp(options: AppOptions) {
   })
 
   const stats = new StatsCollector()
+  const sessions = new SessionStore()
 
   // Mutable state container — updated atomically on /reload-config
   const state = {
@@ -43,6 +46,7 @@ export function buildApp(options: AppOptions) {
     routerConfig: options.routerConfig ?? {},
     gatewayContext: options.gatewayContext,
     decisionLogEnabled: options.decisionLogEnabled ?? true,
+    sessions,
   }
 
   const timeoutMs = options.requestTimeoutMs ?? 30_000
@@ -57,6 +61,7 @@ export function buildApp(options: AppOptions) {
   registerHealthRoute(app, () => state.registry)
   registerModelsRoute(app, () => state.registry)
   registerStatsRoute(app, stats)
+  registerDashboardRoute(app, stats, () => state.routerConfig)
 
   registerReloadRoute(app, state, stats, options.adminToken)
 
@@ -69,6 +74,7 @@ export function buildApp(options: AppOptions) {
       getRouterConfig: () => state.routerConfig,
       getGatewayContext: () => state.gatewayContext,
       getDecisionLogEnabled: () => state.decisionLogEnabled,
+      getSessionStore: () => state.sessions,
     },
     stats,
     timeoutMs,

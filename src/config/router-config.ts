@@ -12,6 +12,13 @@ const ApiStyleSchema = z.enum([
   'google-gemini-cli',
 ])
 
+const CostSchema = z.object({
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number().optional(),
+  cacheWrite: z.number().optional(),
+})
+
 /**
  * Optional local router.config.json file.
  *
@@ -28,6 +35,7 @@ const ExtraModelSchema = z.object({
   api: ApiStyleSchema.optional(),
   reasoning: z.boolean().optional(),
   input: z.array(z.string()).optional(),
+  cost: CostSchema.optional(),
   contextWindow: z.number().optional(),
   maxTokens: z.number().optional(),
 })
@@ -47,6 +55,11 @@ const RouterAIConfigSchema = z.object({
   mode: RoutingClassificationModeSchema.default('heuristic'),
   model: z.string().optional(),
   timeoutMs: z.number().int().positive().max(60_000).default(8_000),
+})
+
+const DashboardConfigSchema = z.object({
+  baselineModel: z.string().optional(),
+  refreshSeconds: z.number().int().positive().max(60).default(5),
 })
 
 const OpenClawIntegrationSchema = z.object({
@@ -113,6 +126,11 @@ const RouterConfigSchema = z.object({
    * to deterministic heuristics automatically.
    */
   routerAI: RouterAIConfigSchema.optional(),
+
+  /**
+   * Optional dashboard preferences.
+   */
+  dashboard: DashboardConfigSchema.optional(),
 })
 
 export type RouterConfig = z.infer<typeof RouterConfigSchema>
@@ -120,6 +138,7 @@ export type ExtraProvider = z.infer<typeof ExtraProviderSchema>
 export type OpenClawIntegration = z.infer<typeof OpenClawIntegrationSchema>
 export type RouterAIConfig = z.infer<typeof RouterAIConfigSchema>
 export type RoutingClassificationMode = z.infer<typeof RoutingClassificationModeSchema>
+export type DashboardConfig = z.infer<typeof DashboardConfigSchema>
 
 export const DEFAULT_ROUTER_CONFIG_PATH = join(homedir(), '.openclaw', 'router.config.json')
 
