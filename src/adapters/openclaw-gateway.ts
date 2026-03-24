@@ -36,6 +36,7 @@ export async function callOpenClawGateway(
 
     const prompt = buildGatewayPrompt(request.messages)
     const runId = `router_${randomUUID()}`
+    const thinkingLevel = mapGatewayThinkingLevel(request.thinking)
     const payload = await runGatewayCall(
       {
         message: prompt.message,
@@ -45,6 +46,7 @@ export async function callOpenClawGateway(
         deliver: false,
         bestEffortDeliver: false,
         idempotencyKey: runId,
+        ...(thinkingLevel !== undefined ? { thinking: thinkingLevel } : {}),
         ...(prompt.extraSystemPrompt !== undefined ? { extraSystemPrompt: prompt.extraSystemPrompt } : {}),
         ...(prompt.attachments.length > 0 ? { attachments: prompt.attachments } : {}),
       },
@@ -158,6 +160,32 @@ async function* buildSyntheticStream(id: string, model: string, content: string)
 
 function buildSessionKey(agentId: string, runId: string): string {
   return `agent:${agentId}:claw-auto-router:${runId}`
+}
+
+function mapGatewayThinkingLevel(requestThinking: AdapterRequest['thinking']): string | undefined {
+  if (requestThinking === undefined) {
+    return undefined
+  }
+
+  if (requestThinking.effort !== undefined) {
+    return requestThinking.effort
+  }
+
+  if (typeof requestThinking.budgetTokens === 'number') {
+    if (requestThinking.budgetTokens <= 2_048) {
+      return 'low'
+    }
+    if (requestThinking.budgetTokens <= 4_096) {
+      return 'medium'
+    }
+    return 'high'
+  }
+
+  if (requestThinking.interleaved === true) {
+    return 'medium'
+  }
+
+  return 'medium'
 }
 
 function buildChatCompletionBody(id: string, model: string, content: string) {

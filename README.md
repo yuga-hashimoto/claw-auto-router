@@ -17,7 +17,7 @@ claw-auto-router:
 - Falls back automatically when a provider fails
 - Tracks routing stats, estimated spend/savings, and active session overrides in a live dashboard
 - Lets users switch models or tiers mid-conversation with natural-language commands such as `use opus` or `prefer code`
-- Supports native Anthropic thinking controls
+- Supports OpenClaw-native thinking overrides
 - Delegates all model calls back through the OpenClaw Gateway instead of reimplementing provider OAuth here
 
 ---
@@ -292,7 +292,7 @@ curl http://localhost:43123/v1/models
 
 If `/v1/models` returns an empty list:
 - start or fix the OpenClaw Gateway for imported models
-- or add local env vars for any direct `extraProviders`
+- then reload the router config with `POST /reload-config` or restart the router service
 
 ### Local install: Node.js + pnpm
 
@@ -410,10 +410,10 @@ What these do:
 
 Current thinking support:
 
-- Direct `anthropic-messages` models use native Anthropic thinking parameters
-- Claude Sonnet 4.6 / Opus 4.6 use adaptive thinking when you set an effort level
-- Earlier direct Claude models use extended thinking with a budget and optional interleaved-thinking beta header
-- Imported OpenClaw Gateway-backed models still route normally, but native Anthropic thinking parameters are not injected through the gateway path yet
+- `thinking high` / `thinking medium` / `thinking low` are forwarded to OpenClaw as gateway thinking-level overrides
+- `reasoning_effort` is mapped onto the same OpenClaw thinking levels
+- Budget and interleaved hints are normalized to the closest OpenClaw level before dispatch
+- OpenAI-style generation controls such as `temperature` and `max_tokens` are not forwarded through `gateway call agent` today
 
 ---
 
@@ -550,13 +550,13 @@ docker run -p 43123:43123 \
 ## Troubleshooting
 
 **"No resolvable candidates"**
-→ All models have missing keys. Check `GET /stats` → `configStatus.warnings`. Set `{PROVIDER}_API_KEY` env vars.
+→ OpenClaw Gateway is unavailable or OpenClaw cannot resolve any enabled models. Check `openclaw gateway status`, then inspect `GET /stats` → `configStatus.warnings`.
 
 **Provider in fallbacks but not in routing pool**
-→ Phantom ref — add it to `router.config.json` under `extraProviders`.
+→ Phantom ref — add that provider/model to your OpenClaw config so `openclaw models status --json` can see it.
 
 **"env_missing" but key is set**
-→ Check the exact name: `{PROVIDER_ID_UPPERCASE_WITH_UNDERSCORES}_API_KEY`. Example: `kimi-coding` → `KIMI_CODING_API_KEY`.
+→ Check the provider auth inside OpenClaw itself. `claw-auto-router` now delegates auth/model execution back through OpenClaw Gateway.
 
 **502 All providers failed**
 → All providers returned errors. Check `GET /stats` for per-model failure counts and server logs for specific HTTP errors.
