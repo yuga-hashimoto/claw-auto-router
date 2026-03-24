@@ -1,6 +1,6 @@
 {
   "name": "claw-auto-router",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Self-hosted OpenAI-compatible LLM router that auto-imports providers from your OpenClaw config",
   "type": "module",
   "main": "dist/index.js",

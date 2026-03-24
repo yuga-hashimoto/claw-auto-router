@@ -5,13 +5,6 @@ import { z } from 'zod'
 import { DEFAULT_BASE_URL } from '../defaults.js'
 import { resolveUserPath } from '../utils/paths.js'
 
-const CostSchema = z.object({
-  input: z.number(),
-  output: z.number(),
-  cacheRead: z.number().optional(),
-  cacheWrite: z.number().optional(),
-})
-
 const RoutingTierSchema = z.enum(['SIMPLE', 'STANDARD', 'COMPLEX', 'CODE'])
 const RoutingClassificationModeSchema = z.enum(['heuristic', 'ai'])
 

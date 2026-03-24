@@ -1,6 +1,6 @@
 import type { RawConfig } from '../config/schema.js'
 import type { RouterConfig } from '../config/router-config.js'
-import type { NormalizedModel, NormalizedProvider, ApiStyle, ApiKeyResolution } from './types.js'
+import type { NormalizedModel, NormalizedProvider, ApiStyle } from './types.js'
 import { resolveApiKey } from './apikey-resolver.js'
 
 interface NormalizeOptions {
@@ -191,4 +191,3 @@ export function normalizeConfig(
 
   return { providers, models, warnings }
 }
-
