@@ -114,7 +114,12 @@ describe('deriveUpstreamSelection', () => {
 
 describe('applySetupToOpenClawConfig', () => {
   it('adds the router provider and redirects OpenClaw primary to it', () => {
-    const config: RawConfig = {
+    const config = {
+      gateway: {
+        remote: {
+          url: 'wss://gateway.example.test',
+        },
+      },
       models: {
         providers: {
           nvidia: {
@@ -133,7 +138,7 @@ describe('applySetupToOpenClawConfig', () => {
           },
         },
       },
-    }
+    } as RawConfig
 
     const integration: OpenClawIntegration = {
       providerId: 'claw-auto-router',
@@ -167,6 +172,12 @@ describe('applySetupToOpenClawConfig', () => {
       'nvidia/qwen/qwen3.5-397b-a17b',
       'zai/glm-4.7',
     ])
+    expect((updated as RawConfig & { gateway?: { mode?: string; remote?: { url?: string } } }).gateway).toEqual({
+      mode: 'local',
+      remote: {
+        url: 'wss://gateway.example.test',
+      },
+    })
   })
 
   it('replaces an older router provider during clean setup', () => {
@@ -219,5 +230,25 @@ describe('applySetupToOpenClawConfig', () => {
       'github-copilot/gpt-4o',
       'openrouter/auto',
     ])
+  })
+
+  it('does not override an existing gateway mode', () => {
+    const updated = applySetupToOpenClawConfig(
+      {
+        gateway: {
+          mode: 'remote',
+        },
+      } as RawConfig,
+      {
+        providerId: 'claw-auto-router',
+        modelId: 'auto',
+        baseUrl: 'http://127.0.0.1:43123',
+      },
+      [makeModel('openai-codex/gpt-5.4')],
+    )
+
+    expect(
+      (updated as RawConfig & { gateway?: { mode?: string } }).gateway?.mode,
+    ).toBe('remote')
   })
 })

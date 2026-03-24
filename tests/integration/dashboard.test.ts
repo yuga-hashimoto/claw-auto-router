@@ -4,16 +4,12 @@ import { ProviderRegistry } from '../../src/providers/registry.js'
 import type { NormalizedModel } from '../../src/providers/types.js'
 import type { RawConfig } from '../../src/config/schema.js'
 
-const { callOpenAIMock } = vi.hoisted(() => ({
-  callOpenAIMock: vi.fn(),
+const { callOpenClawGatewayMock } = vi.hoisted(() => ({
+  callOpenClawGatewayMock: vi.fn(),
 }))
 
-vi.mock('../../src/adapters/openai-completions.js', () => ({
-  callOpenAI: callOpenAIMock,
-}))
-
-vi.mock('../../src/adapters/anthropic-messages.js', () => ({
-  callAnthropic: vi.fn(),
+vi.mock('../../src/adapters/openclaw-gateway.js', () => ({
+  callOpenClawGateway: callOpenClawGatewayMock,
 }))
 
 function makeModel(id: string, inputCost: number, outputCost: number): NormalizedModel {
@@ -65,8 +61,8 @@ const app = buildApp({
 
 describe('dashboard and stats integration', () => {
   beforeEach(() => {
-    callOpenAIMock.mockReset()
-    callOpenAIMock.mockImplementation(async (model: NormalizedModel) => ({
+    callOpenClawGatewayMock.mockReset()
+    callOpenClawGatewayMock.mockImplementation(async (model: NormalizedModel) => ({
       body: {
         id: 'chatcmpl-dashboard',
         object: 'chat.completion',

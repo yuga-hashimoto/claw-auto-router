@@ -166,25 +166,6 @@ describe('normalizeConfig — auto-population', () => {
     expect(models.find((m) => m.id === 'nvidia/bad-model')).toBeUndefined()
   })
 
-  it('merges extraProviders from routerConfig', () => {
-    const { models } = normalizeConfig(
-      {},
-      {
-        extraProviders: {
-          openrouter: {
-            baseUrl: 'https://openrouter.ai/api/v1',
-            api: 'openai-completions',
-            models: [{ id: 'auto', name: 'OpenRouter Auto' }],
-          },
-        },
-      },
-    )
-
-    const orModel = models.find((m) => m.id === 'openrouter/auto')
-    expect(orModel).toBeDefined()
-    expect(orModel?.baseUrl).toBe('https://openrouter.ai/api/v1')
-  })
-
   it('skips the self-provider configured by setup', () => {
     const config: RawConfig = {
       models: {

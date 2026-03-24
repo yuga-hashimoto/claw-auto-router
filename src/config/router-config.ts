@@ -5,47 +5,11 @@ import { z } from 'zod'
 import { DEFAULT_BASE_URL } from '../defaults.js'
 import { resolveUserPath } from '../utils/paths.js'
 
-const ApiStyleSchema = z.enum([
-  'openai-completions',
-  'anthropic-messages',
-  'openai-codex-responses',
-  'google-gemini-cli',
-])
-
 const CostSchema = z.object({
   input: z.number(),
   output: z.number(),
   cacheRead: z.number().optional(),
   cacheWrite: z.number().optional(),
-})
-
-/**
- * Optional local router.config.json file.
- *
- * Use this to:
- *   - Define providers that are referenced in OpenClaw fallbacks but not in models.providers
- *     (e.g. openai-codex, anthropic, openrouter)
- *   - Override model scores / routing preferences
- *   - Denylist specific models
- */
-
-const ExtraModelSchema = z.object({
-  id: z.string(),
-  name: z.string().optional(),
-  api: ApiStyleSchema.optional(),
-  reasoning: z.boolean().optional(),
-  input: z.array(z.string()).optional(),
-  cost: CostSchema.optional(),
-  contextWindow: z.number().optional(),
-  maxTokens: z.number().optional(),
-})
-
-const ExtraProviderSchema = z.object({
-  baseUrl: z.string(),
-  /** Optional static API key. Prefer env vars over putting keys in this file. */
-  apiKey: z.string().optional(),
-  api: ApiStyleSchema.default('openai-completions'),
-  models: z.array(ExtraModelSchema).default([]),
 })
 
 const RoutingTierSchema = z.enum(['SIMPLE', 'STANDARD', 'COMPLEX', 'CODE'])
@@ -71,13 +35,6 @@ const OpenClawIntegrationSchema = z.object({
 })
 
 const RouterConfigSchema = z.object({
-  /**
-   * Extra provider definitions — merged into the OpenClaw provider pool.
-   * Useful for providers like openai-codex or anthropic that are referenced in
-   * agents.defaults.model.fallbacks but not defined in models.providers.
-   */
-  extraProviders: z.record(z.string(), ExtraProviderSchema).optional(),
-
   /** Denylist specific model composite IDs (e.g. "openai-codex/gpt-5.4") */
   denylist: z.array(z.string()).optional(),
 
@@ -134,7 +91,6 @@ const RouterConfigSchema = z.object({
 })
 
 export type RouterConfig = z.infer<typeof RouterConfigSchema>
-export type ExtraProvider = z.infer<typeof ExtraProviderSchema>
 export type OpenClawIntegration = z.infer<typeof OpenClawIntegrationSchema>
 export type RouterAIConfig = z.infer<typeof RouterAIConfigSchema>
 export type RoutingClassificationMode = z.infer<typeof RoutingClassificationModeSchema>

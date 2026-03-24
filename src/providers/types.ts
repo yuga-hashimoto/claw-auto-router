@@ -4,7 +4,7 @@ export type ApiStyle =
   | 'openai-codex-responses'
   | 'google-gemini-cli'
 
-export type ExecutionMode = 'direct' | 'openclaw-gateway'
+export type ExecutionMode = 'openclaw-gateway'
 
 export type AuthMode = 'token' | 'api_key' | 'oauth'
 

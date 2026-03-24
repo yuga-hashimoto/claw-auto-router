@@ -17,27 +17,42 @@ claw-auto-router:
 - Falls back automatically when a provider fails
 - Tracks routing stats, estimated spend/savings, and active session overrides in a live dashboard
 - Lets users switch models or tiers mid-conversation with natural-language commands such as `use opus` or `prefer code`
-- Supports native Anthropic thinking controls for direct `anthropic-messages` models
-- Delegates imported OpenClaw models back through the OpenClaw Gateway instead of reimplementing provider OAuth here
+- Supports native Anthropic thinking controls
+- Delegates all model calls back through the OpenClaw Gateway instead of reimplementing provider OAuth here
 
 ---
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    A[Incoming Request] --> B{Model ID?}
+    B -->|simple / medium / complex / reasoning| C[Forced Tier]
+    B -->|auto| D[Heuristic Classifier\nor RouterAI]
+    C --> E[Assigned Tier]
+    D --> E
+    E --> F[Pick Best Model for Tier]
+    F --> G[Fallback Proxy]
+    G --> H[OpenClaw Gateway]
+    H --> I[LLM Provider]
+    I -->|Stream| H
+    H -->|Stream| G
+    G -->|Stream| A
 ```
-OpenClaw (Discord bot)
-    │
-    │  POST /v1/chat/completions
-    ▼
-claw-auto-router  (this project, port 43123)
-    │
-    ├── Config loader      reads ~/.openclaw/moltbot.json (or openclaw.json)
-    ├── Provider registry   normalizes providers/models
-    ├── Routing engine     classifies request → picks best model
-    ├── Fallback proxy     tries winner, then fallbacks
-    │
-    ├──► OpenClaw Gateway  (for imported OpenClaw models, built-ins, OAuth-backed providers)
-    └──► Direct provider calls  (only for explicit extraProviders in router.config.json)
+
+```mermaid
+sequenceDiagram
+    participant Discord
+    participant OpenClaw as OpenClaw (Gateway)
+    participant Router as claw-auto-router (port 43123)
+
+    Discord->>OpenClaw: Send message
+    OpenClaw->>Router: POST /v1/chat/completions
+    Router->>Router: Classify prompt → pick tier & model
+    Router->>OpenClaw: Forward to best model via Gateway
+    OpenClaw-->>Router: Stream response
+    Router-->>OpenClaw: Pipe response
+    OpenClaw-->>Discord: Display response
 ```
 
 ### Routing tiers
@@ -109,15 +124,8 @@ From the config it extracts:
 - `agents.defaults.models.*` — aliases
 
 Execution path:
-- Providers imported from OpenClaw run back through the OpenClaw Gateway with a provider/model override
-- This means built-in and OAuth-backed providers like OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, Qwen Portal, and Google Antigravity stay on OpenClaw's auth/runtime path
-- `extraProviders` in `router.config.json` are still called directly by claw-auto-router
-
-Supported direct transports for `extraProviders` are:
-- `openai-completions`
-- `anthropic-messages`
-- `openai-codex-responses`
-- `google-gemini-cli`
+- All providers run through the OpenClaw Gateway with a provider/model override
+- Built-in and OAuth-backed providers like OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, Qwen Portal, and Google Antigravity stay on OpenClaw's auth/runtime path
 
 ### API key resolution
 
@@ -129,9 +137,8 @@ Supported direct transports for `extraProviders` are:
 | Not resolvable | Hidden from routing pool |
 
 Visibility rules:
-- OpenClaw-backed models appear in `/v1/models` when the OpenClaw Gateway is reachable
-- Direct `extraProviders` appear when claw-auto-router can resolve their local API key or token
-- If the Gateway is down, imported OpenClaw models are hidden until it comes back
+- Models appear in `/v1/models` when the OpenClaw Gateway is reachable
+- If the Gateway is down, models are hidden until it comes back
 
 Current caveats for OpenClaw-backed execution:
 - Streaming is synthesized from the final Gateway result today, so imported models do not token-stream incrementally yet
@@ -362,13 +369,6 @@ Example:
     "baselineModel": "openai-codex/gpt-5.4",
     "refreshSeconds": 5
   },
-  "extraProviders": {
-    "openrouter": {
-      "baseUrl": "https://openrouter.ai/api/v1",
-      "api": "openai-completions",
-      "models": [{ "id": "auto", "name": "OpenRouter Auto" }]
-    }
-  },
   "denylist": ["some-provider/bad-model"]
 }
 ```
@@ -379,7 +379,6 @@ Example:
 | `tierPriority` | Preferred model order within each tier (explicit beats score). Setup wizard can write this too. |
 | `routerAI` | Optional AI classifier for tier decisions. If it fails, routing falls back to heuristics automatically. |
 | `dashboard` | Baseline model + refresh interval for `/dashboard` estimated spend/savings. |
-| `extraProviders` | Providers not in your OpenClaw config (e.g. openrouter, openai-codex, google-gemini-cli) |
 | `denylist` | Models to exclude from routing |
 
 `claw-auto-router setup` also writes `openClawIntegration` metadata here so the router can remember your original OpenClaw primary/fallback chain without routing to itself.

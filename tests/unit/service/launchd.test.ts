@@ -58,6 +58,8 @@ describe('buildLaunchAgentPlist', () => {
 
     expect(plist).toContain('<string>ai.openclaw.claw-auto-router</string>')
     expect(plist).toContain('<string>/opt/homebrew/bin/claw-auto-router</string>')
+    expect(plist).toContain('<key>EnvironmentVariables</key>')
+    expect(plist).toContain('<key>PATH</key>')
     expect(plist).toContain('<string>/Users/example/.openclaw/logs/claw-auto-router.launchd.out.log</string>')
     expect(plist).toContain('<key>RunAtLoad</key>')
     expect(plist).toContain('<true/>')

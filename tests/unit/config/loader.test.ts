@@ -102,4 +102,46 @@ describe('loadOpenClawConfig', () => {
       expect(result.path).toBe(configPath)
     }
   })
+
+  it('preserves unknown top-level and nested fields when loading a config', () => {
+    const configPath = join(tmpDir, 'passthrough.json')
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        meta: { version: '2026.3.14' },
+        gateway: { mode: 'local', port: 18789 },
+        models: {
+          mode: 'merge',
+          customField: true,
+          providers: {
+            nvidia: {
+              baseUrl: 'https://example.com',
+              apiKey: 'test-key',
+              api: 'openai-completions',
+              transport: 'custom',
+              models: [{ id: 'model-1', name: 'Model 1', extra: 'kept' }],
+            },
+          },
+        },
+      }),
+    )
+
+    const result = loadOpenClawConfig(configPath)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      const config = result.config as typeof result.config & {
+        meta?: { version?: string }
+        gateway?: { mode?: string; port?: number }
+      }
+      expect(config.meta?.version).toBe('2026.3.14')
+      expect(config.gateway).toEqual({ mode: 'local', port: 18789 })
+      expect((config.models as { customField?: boolean } | undefined)?.customField).toBe(true)
+      expect(
+        (config.models?.providers['nvidia'] as { transport?: string }).transport,
+      ).toBe('custom')
+      expect(
+        (config.models?.providers['nvidia']?.models[0] as { extra?: string } | undefined)?.extra,
+      ).toBe('kept')
+    }
+  })
 })

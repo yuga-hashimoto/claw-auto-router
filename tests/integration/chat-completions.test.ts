@@ -8,18 +8,13 @@ import { ProviderRegistry } from '../../src/providers/registry.js'
 import type { NormalizedModel } from '../../src/providers/types.js'
 import type { RawConfig } from '../../src/config/schema.js'
 
-const { callOpenAIMock, callAnthropicMock } = vi.hoisted(() => ({
-  callOpenAIMock: vi.fn(),
-  callAnthropicMock: vi.fn(),
+const { callOpenClawGatewayMock } = vi.hoisted(() => ({
+  callOpenClawGatewayMock: vi.fn(),
 }))
 
-// Mock the adapters so we don't hit real network
-vi.mock('../../src/adapters/openai-completions.js', () => ({
-  callOpenAI: callOpenAIMock,
-}))
-
-vi.mock('../../src/adapters/anthropic-messages.js', () => ({
-  callAnthropic: callAnthropicMock,
+// Mock the gateway adapter so we don't hit real network
+vi.mock('../../src/adapters/openclaw-gateway.js', () => ({
+  callOpenClawGateway: callOpenClawGatewayMock,
 }))
 
 const makeModel = (id: string, overrides: Partial<NormalizedModel> = {}): NormalizedModel => ({
@@ -57,40 +52,25 @@ const app = buildApp({ config, registry, logLevel: 'silent', decisionLogEnabled:
 
 describe('POST /v1/chat/completions', () => {
   beforeEach(() => {
-    callOpenAIMock.mockReset()
-    callAnthropicMock.mockReset()
+    callOpenClawGatewayMock.mockReset()
 
-    callOpenAIMock.mockImplementation(async (model: NormalizedModel) => ({
+    callOpenClawGatewayMock.mockImplementation(async (model: NormalizedModel, request: { thinking?: unknown }) => ({
       body: {
         id: 'chatcmpl-test',
         object: 'chat.completion',
         created: 1700000000,
         model: model.modelId,
-        choices: [{ index: 0, message: { role: 'assistant', content: 'Hello!' }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-      },
-      statusCode: 200,
-      headers: {},
-      streaming: false,
-    }))
-
-    callAnthropicMock.mockImplementation(async (_model: NormalizedModel, request: { thinking?: unknown }) => ({
-      body: {
-        id: 'chatcmpl-anthropic',
-        object: 'chat.completion',
-        created: 1700000000,
-        model: 'anthropic-test-model',
         choices: [
           {
             index: 0,
             message: {
               role: 'assistant',
-              content: request.thinking !== undefined ? 'Thinking applied' : 'Anthropic hello!',
+              content: request.thinking !== undefined ? 'Thinking applied' : 'Hello!',
             },
             finish_reason: 'stop',
           },
         ],
-        usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
       },
       statusCode: 200,
       headers: {},
@@ -161,7 +141,7 @@ describe('POST /v1/chat/completions', () => {
 
     expect(control.statusCode).toBe(200)
     expect(control.json().choices[0].message.content).toContain('Routing locked to model test-provider/fallback-model.')
-    expect(callOpenAIMock).not.toHaveBeenCalled()
+    expect(callOpenClawGatewayMock).not.toHaveBeenCalled()
 
     const response = await app.inject({
       method: 'POST',
@@ -174,7 +154,7 @@ describe('POST /v1/chat/completions', () => {
     })
 
     expect(response.statusCode).toBe(200)
-    expect((callOpenAIMock.mock.calls.at(-1)?.[0] as NormalizedModel | undefined)?.id).toBe(
+    expect((callOpenClawGatewayMock.mock.calls.at(-1)?.[0] as NormalizedModel | undefined)?.id).toBe(
       'test-provider/fallback-model',
     )
 
@@ -238,11 +218,11 @@ describe('POST /v1/chat/completions', () => {
       })
 
       expect(response.statusCode).toBe(200)
-      expect(callAnthropicMock.mock.calls).toHaveLength(1)
-      const anthropicRequest = callAnthropicMock.mock.calls[0]?.[1] as
+      expect(callOpenClawGatewayMock.mock.calls).toHaveLength(1)
+      const gatewayRequest = callOpenClawGatewayMock.mock.calls[0]?.[1] as
         | { thinking?: { effort?: string; source?: string } }
         | undefined
-      expect(anthropicRequest?.thinking).toMatchObject({
+      expect(gatewayRequest?.thinking).toMatchObject({
         effort: 'high',
         source: 'session',
       })

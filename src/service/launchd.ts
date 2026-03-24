@@ -46,6 +46,10 @@ interface LaunchdPaths {
   stderrPath: string
 }
 
+interface LaunchdEnvironment {
+  PATH?: string
+}
+
 const LAUNCHD_LABEL = 'ai.openclaw.claw-auto-router'
 const SERVICE_STATE_TIMEOUT_MS = 5_000
 const SERVICE_STATE_POLL_MS = 125
@@ -242,8 +246,20 @@ export function buildLaunchAgentPlist(
   programArguments: string[],
   paths = getLaunchdPaths(),
   workingDirectory = homedir(),
+  environment = buildLaunchdEnvironment(),
 ): string {
   const argumentXml = programArguments.map((value) => `    <string>${escapeXml(value)}</string>`).join('\n')
+  const environmentEntries = Object.entries(environment)
+    .filter(([, value]) => typeof value === 'string' && value !== '')
+    .map(
+      ([key, value]) =>
+        `    <key>${escapeXml(key)}</key>\n    <string>${escapeXml(value)}</string>`,
+    )
+    .join('\n')
+  const environmentBlock =
+    environmentEntries === ''
+      ? ''
+      : `  <key>EnvironmentVariables</key>\n  <dict>\n${environmentEntries}\n  </dict>\n`
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -261,13 +277,40 @@ ${argumentXml}
   <true/>
   <key>WorkingDirectory</key>
   <string>${escapeXml(workingDirectory)}</string>
-  <key>StandardOutPath</key>
+${environmentBlock}  <key>StandardOutPath</key>
   <string>${escapeXml(paths.stdoutPath)}</string>
   <key>StandardErrorPath</key>
   <string>${escapeXml(paths.stderrPath)}</string>
 </dict>
 </plist>
 `
+}
+
+function buildLaunchdEnvironment(): LaunchdEnvironment {
+  const pathEntries = [
+    ...(process.env.PATH?.split(':') ?? []),
+    dirname(process.execPath),
+    resolveBinaryDirectory('openclaw'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+  ].filter((value): value is string => value !== undefined && value !== '')
+
+  const normalizedPath = Array.from(new Set(pathEntries)).join(':')
+  return normalizedPath === '' ? {} : { PATH: normalizedPath }
+}
+
+function resolveBinaryDirectory(command: string): string | undefined {
+  const result = spawnSync('which', [command], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const resolvedPath = result.stdout.trim()
+
+  if (result.status !== 0 || resolvedPath === '') {
+    return undefined
+  }
+
+  return dirname(resolvedPath)
 }
 
 export function getBackgroundServiceStatus(): BackgroundServiceStatus {

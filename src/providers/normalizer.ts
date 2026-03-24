@@ -1,6 +1,6 @@
-import type { RawConfig, RawProvider } from '../config/schema.js'
+import type { RawConfig } from '../config/schema.js'
 import type { RouterConfig } from '../config/router-config.js'
-import type { NormalizedModel, NormalizedProvider, ApiStyle, ExecutionMode, ApiKeyResolution } from './types.js'
+import type { NormalizedModel, NormalizedProvider, ApiStyle, ApiKeyResolution } from './types.js'
 import { resolveApiKey } from './apikey-resolver.js'
 
 interface NormalizeOptions {
@@ -32,11 +32,7 @@ export function normalizeConfig(
   const models: NormalizedModel[] = []
   const selfProviderId = routerConfig?.openClawIntegration?.providerId
 
-  // Merge OpenClaw providers with extra providers from router.config.json.
-  const rawProviders: Record<string, RawProvider> = {
-    ...(config.models?.providers ?? {}),
-    ...((routerConfig?.extraProviders ?? {}) as Record<string, RawProvider>),
-  }
+  const rawProviders = config.models?.providers ?? {}
 
   const authProfiles = config.auth?.profiles
   const agentModels = config.agents?.defaults?.models ?? {}
@@ -54,16 +50,9 @@ export function normalizeConfig(
 
     const apiKeyResolution = resolveApiKey(providerId, rawProvider, authProfiles)
     const providerApi: ApiStyle = rawProvider.api
-    const providerTransport: ExecutionMode = gatewayBackedProviderIds.has(providerId)
-      ? 'openclaw-gateway'
-      : 'direct'
-    const providerAvailable = providerTransport === 'openclaw-gateway'
-      ? gatewayAvailable
-      : apiKeyResolution.status === 'resolved'
+    const providerAvailable = gatewayAvailable
     const providerUnavailableReason = !providerAvailable
-      ? providerTransport === 'openclaw-gateway'
-        ? 'OpenClaw Gateway is unavailable'
-        : describeUnavailableDirectProvider(apiKeyResolution)
+      ? 'OpenClaw Gateway is unavailable'
       : undefined
 
     const normalizedModels: NormalizedModel[] = []
@@ -91,7 +80,7 @@ export function normalizeConfig(
         maxTokens: rawModel.maxTokens ?? 4096,
         ...(rawModel.cost !== undefined ? { cost: rawModel.cost } : {}),
         ...(alias !== undefined ? { alias } : {}),
-        transport: providerTransport,
+        transport: 'openclaw-gateway' as const,
         available: providerAvailable,
         ...(providerUnavailableReason !== undefined ? { unavailableReason: providerUnavailableReason } : {}),
         ...(rawProvider.authMode !== undefined ? { authMode: rawProvider.authMode } : {}),
@@ -113,7 +102,7 @@ export function normalizeConfig(
       api: providerApi,
       apiKeyResolution,
       models: normalizedModels,
-      transport: providerTransport,
+      transport: 'openclaw-gateway' as const,
       available: providerAvailable,
       ...(providerUnavailableReason !== undefined ? { unavailableReason: providerUnavailableReason } : {}),
       ...(rawProvider.authMode !== undefined ? { authMode: rawProvider.authMode } : {}),
@@ -188,8 +177,8 @@ export function normalizeConfig(
     } else {
       // Provider itself is missing — true phantom ref
       warnings.push(
-        `Phantom ref "${ref}" — provider "${providerId}" not found in models.providers or extraProviders. ` +
-          `Add it to router.config.json under "extraProviders" to enable it.`,
+        `Phantom ref "${ref}" — provider "${providerId}" not found in models.providers. ` +
+          `Add it to your OpenClaw config to enable it.`,
       )
     }
   }
@@ -203,14 +192,3 @@ export function normalizeConfig(
   return { providers, models, warnings }
 }
 
-function describeUnavailableDirectProvider(apiKeyResolution: ApiKeyResolution): string {
-  if (apiKeyResolution.status === 'env_missing') {
-    return `Missing API key environment variable ${apiKeyResolution.envVar}`
-  }
-
-  if (apiKeyResolution.status === 'oauth') {
-    return apiKeyResolution.reason
-  }
-
-  return 'Provider is unavailable'
-}

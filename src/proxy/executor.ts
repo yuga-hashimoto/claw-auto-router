@@ -1,10 +1,6 @@
 import type { NormalizedModel } from '../providers/types.js'
 import type { AdapterRequest } from '../adapters/types.js'
 import type { ProxyAttempt, ProxyResult } from './types.js'
-import { callOpenAI } from '../adapters/openai-completions.js'
-import { callAnthropic } from '../adapters/anthropic-messages.js'
-import { callOpenAICodexResponses } from '../adapters/openai-codex-responses.js'
-import { callGoogleGeminiCli } from '../adapters/google-gemini-cli.js'
 import { callOpenClawGateway } from '../adapters/openclaw-gateway.js'
 
 /** HTTP status codes that should trigger a fallback retry */
@@ -27,16 +23,7 @@ export async function executeOne(
   const start = Date.now()
 
   try {
-    const adapterResponse =
-      model.transport === 'openclaw-gateway'
-        ? await callOpenClawGateway(model, request, timeoutMs, request.openClawGateway)
-        : model.api === 'anthropic-messages'
-        ? await callAnthropic(model, request, timeoutMs)
-        : model.api === 'openai-codex-responses'
-          ? await callOpenAICodexResponses(model, request, timeoutMs)
-          : model.api === 'google-gemini-cli'
-            ? await callGoogleGeminiCli(model, request, timeoutMs)
-            : await callOpenAI(model, request, timeoutMs)
+    const adapterResponse = await callOpenClawGateway(model, request, timeoutMs, request.openClawGateway)
 
     const durationMs = Date.now() - start
 

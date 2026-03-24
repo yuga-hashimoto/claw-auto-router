@@ -494,6 +494,23 @@ function buildAutoRouterModel(models: NormalizedModel[], modelId: string): RawMo
   }
 }
 
+function ensureGatewayMode(rawConfig: RawConfig): RawConfig {
+  const configRecord = rawConfig as RawConfig & { gateway?: Record<string, unknown> }
+  const currentGateway = configRecord.gateway
+
+  if (currentGateway?.['mode'] !== undefined) {
+    return rawConfig
+  }
+
+  return {
+    ...rawConfig,
+    gateway: {
+      ...(currentGateway ?? {}),
+      mode: 'local',
+    },
+  } as RawConfig
+}
+
 export function applySetupToOpenClawConfig(
   config: RawConfig,
   integration: OpenClawIntegration,
@@ -535,14 +552,14 @@ export function applySetupToOpenClawConfig(
     },
   }
 
-  return {
+  return ensureGatewayMode({
     ...config,
     models: updatedModelsSection,
     agents: {
       ...(config.agents ?? {}),
       defaults: updatedAgentDefaults,
     },
-  }
+  })
 }
 
 function writeOpenClawConfig(path: string, updated: RawConfig): { backupPath?: string } {

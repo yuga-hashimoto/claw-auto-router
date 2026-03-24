@@ -25,7 +25,7 @@ const RawModelEntrySchema = z.object({
   cost: CostSchema.optional(),
   contextWindow: z.number().optional(),
   maxTokens: z.number().optional(),
-})
+}).passthrough()
 
 const RawProviderSchema = z.object({
   baseUrl: z.string(),
@@ -39,26 +39,26 @@ const RawProviderSchema = z.object({
   oauthAccountId: z.string().optional(),
   authHeader: z.boolean().optional(),
   models: z.array(RawModelEntrySchema).default([]),
-})
+}).passthrough()
 
 const AuthProfileSchema = z.object({
   provider: z.string(),
   mode: z.enum(['token', 'api_key', 'oauth']),
-})
+}).passthrough()
 
 const AgentModelRefSchema = z.object({
   alias: z.string().optional(),
-})
+}).passthrough()
 
 const AgentDefaultsModelSchema = z.object({
   primary: z.string().optional(),
   fallbacks: z.array(z.string()).optional(),
-})
+}).passthrough()
 
 const AgentDefaultsSchema = z.object({
   model: AgentDefaultsModelSchema.optional(),
   models: z.record(z.string(), AgentModelRefSchema).optional(),
-})
+}).passthrough()
 
 export const OpenClawConfigSchema = z.object({
   models: z
@@ -66,18 +66,21 @@ export const OpenClawConfigSchema = z.object({
       mode: z.enum(['merge', 'override']).optional(),
       providers: z.record(z.string(), RawProviderSchema).default({}),
     })
+    .passthrough()
     .optional(),
   agents: z
     .object({
       defaults: AgentDefaultsSchema.optional(),
     })
+    .passthrough()
     .optional(),
   auth: z
     .object({
       profiles: z.record(z.string(), AuthProfileSchema).optional(),
     })
+    .passthrough()
     .optional(),
-})
+}).passthrough()
 
 export type RawModelEntry = z.infer<typeof RawModelEntrySchema>
 export type RawProvider = z.infer<typeof RawProviderSchema>
