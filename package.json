@@ -1,6 +1,6 @@
 {
   "name": "claw-auto-router",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Self-hosted OpenAI-compatible LLM router that auto-imports providers from your OpenClaw config",
   "type": "module",
   "main": "dist/index.js",
@@ -26,7 +26,7 @@
   ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/index.js', 0o755)\"",
     "start": "node dist/index.js",
     "prepare": "npm run build",
     "prepack": "npm run build",

@@ -141,7 +141,7 @@ function printSetupSummary(result: Awaited<ReturnType<typeof runSetup>>): void {
   console.log(`  Health check      : curl ${result.routerRuntime.healthUrl}`)
   console.log(`  Model list        : curl ${result.routerRuntime.modelsUrl}`)
   console.log('  Decision logs     : claw-auto-router logs --limit 20')
-  console.log(`  OpenClaw check    : openclaw models status --json`)
+  console.log(`  OpenClaw check    : openclaw models list --json`)
 }
 
 function getCommandName(): string {

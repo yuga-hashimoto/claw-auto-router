@@ -117,7 +117,7 @@ Config discovery order:
 
 From the config it extracts:
 - `models.providers.*` — base URLs, API styles, model definitions
-- `openclaw models status --json` and `{agentDir}/models.json` — built-in provider/model registry (OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, Google Antigravity, etc.)
+- `openclaw models list --json` and `{agentDir}/models.json` — built-in provider/model registry (OpenRouter, GitHub Copilot, OpenAI Codex, MiniMax Portal, Google Antigravity, etc.)
 - `openclaw models list --json` — full model catalog with context window and capability metadata
 - `agents.defaults.model.primary` — top-priority model
 - `agents.defaults.model.fallbacks` — fallback chain order
@@ -553,7 +553,7 @@ docker run -p 43123:43123 \
 → OpenClaw Gateway is unavailable or OpenClaw cannot resolve any enabled models. Check `openclaw gateway status`, then inspect `GET /stats` → `configStatus.warnings`.
 
 **Provider in fallbacks but not in routing pool**
-→ Phantom ref — add that provider/model to your OpenClaw config so `openclaw models status --json` can see it.
+→ Phantom ref — add that provider/model to your OpenClaw config so `openclaw models list --json` can see it.
 
 **"env_missing" but key is set**
 → Check the provider auth inside OpenClaw itself. `claw-auto-router` now delegates auth/model execution back through OpenClaw Gateway.
