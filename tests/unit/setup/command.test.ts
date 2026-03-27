@@ -174,6 +174,13 @@ describe('applySetupToOpenClawConfig', () => {
     ])
     expect((updated as RawConfig & { gateway?: { mode?: string; remote?: { url?: string } } }).gateway).toEqual({
       mode: 'local',
+      http: {
+        endpoints: {
+          chatCompletions: {
+            enabled: true,
+          },
+        },
+      },
       remote: {
         url: 'wss://gateway.example.test',
       },
@@ -250,5 +257,44 @@ describe('applySetupToOpenClawConfig', () => {
     expect(
       (updated as RawConfig & { gateway?: { mode?: string } }).gateway?.mode,
     ).toBe('remote')
+  })
+
+  it('enables gateway chat completions without clobbering existing gateway http config', () => {
+    const updated = applySetupToOpenClawConfig(
+      {
+        gateway: {
+          http: {
+            keepAliveTimeoutMs: 1000,
+            endpoints: {
+              models: {
+                enabled: true,
+              },
+            },
+          },
+        },
+      } as RawConfig,
+      {
+        providerId: 'claw-auto-router',
+        modelId: 'auto',
+        baseUrl: 'http://127.0.0.1:43123',
+      },
+      [makeModel('openai-codex/gpt-5.4')],
+    )
+
+    const gateway = (updated as RawConfig & {
+      gateway?: {
+        http?: {
+          keepAliveTimeoutMs?: number
+          endpoints?: {
+            models?: { enabled?: boolean }
+            chatCompletions?: { enabled?: boolean }
+          }
+        }
+      }
+    }).gateway
+
+    expect(gateway?.http?.keepAliveTimeoutMs).toBe(1000)
+    expect(gateway?.http?.endpoints?.models?.enabled).toBe(true)
+    expect(gateway?.http?.endpoints?.chatCompletions?.enabled).toBe(true)
   })
 })

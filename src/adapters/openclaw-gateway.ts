@@ -23,6 +23,14 @@ type GatewayAttachment = {
   content: string
 }
 
+type OpenAIErrorBody = {
+  error?: {
+    message?: string
+    type?: string
+    code?: string | number
+  }
+}
+
 export async function callOpenClawGateway(
   model: NormalizedModel,
   request: AdapterRequest,
@@ -34,45 +42,11 @@ export async function callOpenClawGateway(
       throw new GatewayPromptError('OpenClaw Gateway is unavailable')
     }
 
-    const prompt = buildGatewayPrompt(request.messages)
-    const runId = `router_${randomUUID()}`
-    const thinkingLevel = mapGatewayThinkingLevel(request.thinking)
-    const payload = await runGatewayCall(
-      {
-        message: prompt.message,
-        agentId: gateway.agentId,
-        model: model.id,
-        sessionKey: buildSessionKey(gateway.agentId, runId),
-        deliver: false,
-        bestEffortDeliver: false,
-        idempotencyKey: runId,
-        ...(thinkingLevel !== undefined ? { thinking: thinkingLevel } : {}),
-        ...(prompt.extraSystemPrompt !== undefined ? { extraSystemPrompt: prompt.extraSystemPrompt } : {}),
-        ...(prompt.attachments.length > 0 ? { attachments: prompt.attachments } : {}),
-      },
-      timeoutMs,
-      request.openClawConfigPath,
-    )
-
-    const finalRunId = payload.runId ?? runId
-    const content = extractAgentResponseText(payload.result)
-
-    if (!request.stream) {
-      return {
-        body: buildChatCompletionBody(finalRunId, model.id, content),
-        statusCode: 200,
-        headers: {},
-        streaming: false,
-      }
+    if (request.thinking !== undefined) {
+      return await callOpenClawGatewayViaAgent(model, request, timeoutMs, gateway)
     }
 
-    return {
-      body: null,
-      statusCode: 200,
-      headers: {},
-      streaming: true,
-      stream: buildSyntheticStream(finalRunId, model.id, content),
-    }
+    return await callOpenClawGatewayViaHttp(model, request, timeoutMs, gateway)
   } catch (error) {
     const { statusCode, message } = normalizeGatewayError(error)
     return {
@@ -87,6 +61,260 @@ export async function callOpenClawGateway(
       headers: {},
       streaming: false,
     }
+  }
+}
+
+async function callOpenClawGatewayViaHttp(
+  model: NormalizedModel,
+  request: AdapterRequest,
+  timeoutMs: number,
+  gateway: OpenClawGatewayContext,
+): Promise<AdapterResponse> {
+  if (gateway.url === undefined) {
+    throw new GatewayPromptError('OpenClaw Gateway URL is unavailable')
+  }
+
+  const endpoint = resolveGatewayHttpEndpoint(gateway.url)
+  const authSecrets = resolveGatewayAuthSecrets(gateway)
+  const body = buildGatewayHttpRequestBody(gateway.agentId, request)
+
+  let lastUnauthorized: GatewayHttpError | undefined
+
+  for (const authSecret of authSecrets) {
+    try {
+      return await runGatewayHttpRequest(endpoint, model, body, request.stream, timeoutMs, authSecret)
+    } catch (error) {
+      if (error instanceof GatewayHttpError && error.statusCode === 401) {
+        lastUnauthorized = error
+        continue
+      }
+
+      if (shouldFallbackToAgentBridge(error)) {
+        return await callOpenClawGatewayViaAgent(model, request, timeoutMs, gateway)
+      }
+
+      throw error
+    }
+  }
+
+  if (lastUnauthorized !== undefined) {
+    throw lastUnauthorized
+  }
+
+  try {
+    return await runGatewayHttpRequest(endpoint, model, body, request.stream, timeoutMs)
+  } catch (error) {
+    if (shouldFallbackToAgentBridge(error)) {
+      return await callOpenClawGatewayViaAgent(model, request, timeoutMs, gateway)
+    }
+
+    throw error
+  }
+}
+
+async function runGatewayHttpRequest(
+  endpoint: string,
+  model: NormalizedModel,
+  body: Record<string, unknown>,
+  stream: boolean,
+  timeoutMs: number,
+  authSecret?: string,
+): Promise<AdapterResponse> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Accept: stream ? 'text/event-stream' : 'application/json',
+        'Content-Type': 'application/json',
+        'x-openclaw-model': model.id,
+        ...(authSecret !== undefined ? { Authorization: `Bearer ${authSecret}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (stream) {
+      if (!response.ok) {
+        throw await buildGatewayHttpError(response)
+      }
+
+      if (response.body === null) {
+        throw new GatewayHttpError(502, 'OpenClaw Gateway returned an empty stream body')
+      }
+
+      return {
+        body: null,
+        statusCode: response.status,
+        headers: {},
+        streaming: true,
+        stream: decodeGatewayHttpStream(response.body),
+      }
+    }
+
+    const payload = await parseGatewayHttpBody(response)
+
+    if (!response.ok) {
+      throw buildGatewayHttpErrorFromPayload(response.status, payload)
+    }
+
+    return {
+      body: payload,
+      statusCode: response.status,
+      headers: {},
+      streaming: false,
+    }
+  } catch (error) {
+    if (error instanceof GatewayHttpError) {
+      throw error
+    }
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error
+    }
+    throw new GatewayHttpError(502, error instanceof Error ? error.message : 'OpenClaw Gateway HTTP request failed')
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function buildGatewayHttpRequestBody(agentId: string, request: AdapterRequest): Record<string, unknown> {
+  return {
+    model: `openclaw/${agentId}`,
+    messages: request.messages,
+    stream: request.stream,
+    ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
+    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+    ...(request.extra !== undefined ? request.extra : {}),
+  }
+}
+
+function resolveGatewayHttpEndpoint(gatewayUrl: string): string {
+  const url = new URL(gatewayUrl)
+  url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+  url.pathname = '/v1/chat/completions'
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
+function resolveGatewayAuthSecrets(gateway: OpenClawGatewayContext): string[] {
+  const candidates = [gateway.password, gateway.token]
+  const seen = new Set<string>()
+  const secrets: string[] = []
+
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === '' || seen.has(candidate)) {
+      continue
+    }
+    seen.add(candidate)
+    secrets.push(candidate)
+  }
+
+  return secrets
+}
+
+function shouldFallbackToAgentBridge(error: unknown): boolean {
+  return (
+    error instanceof GatewayHttpError &&
+    (error.statusCode === 404 || error.statusCode === 405 || error.statusCode === 501)
+  )
+}
+
+async function parseGatewayHttpBody(response: Response): Promise<unknown> {
+  const text = await response.text()
+  if (text.trim() === '') {
+    return {}
+  }
+
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    throw new GatewayHttpError(response.status, `OpenClaw Gateway returned invalid JSON (HTTP ${response.status})`)
+  }
+}
+
+async function buildGatewayHttpError(response: Response): Promise<GatewayHttpError> {
+  const payload = await parseGatewayHttpBody(response)
+  return buildGatewayHttpErrorFromPayload(response.status, payload)
+}
+
+function buildGatewayHttpErrorFromPayload(statusCode: number, payload: unknown): GatewayHttpError {
+  const message =
+    (payload as OpenAIErrorBody | undefined)?.error?.message ??
+    (typeof payload === 'object' && payload !== null ? JSON.stringify(payload) : undefined) ??
+    `OpenClaw Gateway HTTP request failed with status ${statusCode}`
+
+  return new GatewayHttpError(statusCode, message)
+}
+
+async function* decodeGatewayHttpStream(body: ReadableStream<Uint8Array>): AsyncIterable<string> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        const remaining = decoder.decode()
+        if (remaining !== '') {
+          yield remaining
+        }
+        return
+      }
+
+      yield decoder.decode(value, { stream: true })
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+async function callOpenClawGatewayViaAgent(
+  model: NormalizedModel,
+  request: AdapterRequest,
+  timeoutMs: number,
+  gateway: OpenClawGatewayContext,
+): Promise<AdapterResponse> {
+  const prompt = buildGatewayPrompt(request.messages)
+  const runId = `router_${randomUUID()}`
+  const thinkingLevel = mapGatewayThinkingLevel(request.thinking)
+  const payload = await runGatewayCall(
+    {
+      message: prompt.message,
+      agentId: gateway.agentId,
+      model: model.id,
+      sessionKey: buildSessionKey(gateway.agentId, runId),
+      deliver: false,
+      bestEffortDeliver: false,
+      idempotencyKey: runId,
+      ...(thinkingLevel !== undefined ? { thinking: thinkingLevel } : {}),
+      ...(prompt.extraSystemPrompt !== undefined ? { extraSystemPrompt: prompt.extraSystemPrompt } : {}),
+      ...(prompt.attachments.length > 0 ? { attachments: prompt.attachments } : {}),
+    },
+    timeoutMs,
+    request.openClawConfigPath,
+  )
+
+  const finalRunId = payload.runId ?? runId
+  const content = extractAgentResponseText(payload.result)
+
+  if (!request.stream) {
+    return {
+      body: buildChatCompletionBody(finalRunId, model.id, content),
+      statusCode: 200,
+      headers: {},
+      streaming: false,
+    }
+  }
+
+  return {
+    body: null,
+    statusCode: 200,
+    headers: {},
+    streaming: true,
+    stream: buildSyntheticStream(finalRunId, model.id, content),
   }
 }
 
@@ -247,6 +475,10 @@ function normalizeGatewayError(error: unknown): { statusCode: number; message: s
     return { statusCode: 400, message: error.message }
   }
 
+  if (error instanceof GatewayHttpError) {
+    return { statusCode: error.statusCode, message: error.message }
+  }
+
   if (error instanceof GatewayCliError) {
     const message = error.message
     if (message.includes('invalid agent params') || message.includes('invalid request')) {
@@ -266,6 +498,16 @@ function normalizeGatewayError(error: unknown): { statusCode: number; message: s
   }
 
   return { statusCode: 502, message: 'OpenClaw Gateway request failed' }
+}
+
+class GatewayHttpError extends Error {
+  constructor(
+    readonly statusCode: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'GatewayHttpError'
+  }
 }
 
 class GatewayCliError extends Error {

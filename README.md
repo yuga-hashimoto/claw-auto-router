@@ -141,8 +141,9 @@ Visibility rules:
 - If the Gateway is down, models are hidden until it comes back
 
 Current caveats for OpenClaw-backed execution:
-- Streaming is synthesized from the final Gateway result today, so imported models do not token-stream incrementally yet
-- Image inputs for Gateway-backed requests currently support `data:image/...;base64,...` URLs from the latest user turn
+- Standard chat requests now flow through OpenClaw Gateway's OpenAI-compatible HTTP API, so messages, `temperature`, `max_tokens`, and SSE streaming stay on the native OpenClaw path
+- Conversation-level `thinking` overrides still fall back to the Gateway agent bridge until OpenClaw's HTTP chat endpoint exposes the same per-request thinking controls
+- Agent-bridge fallback still only supports `data:image/...;base64,...` URLs from the latest user turn
 
 ---
 
@@ -179,6 +180,7 @@ openclaw gateway status
 - asks whether routing decisions should stay heuristic or use RouterAI, and lets you pick the classifier model
 - writes `~/.openclaw/router.config.json`
 - updates your OpenClaw config to point `claw-auto-router/auto` at the local router
+- ensures `gateway.http.endpoints.chatCompletions.enabled=true` so the router can use OpenClaw's native OpenAI-compatible Gateway path
 - on macOS, installs and starts a `launchd` background service automatically
 
 If you want to throw away previous claw-auto-router tier assignments and rebuild them from scratch, use:
@@ -413,7 +415,8 @@ Current thinking support:
 - `thinking high` / `thinking medium` / `thinking low` are forwarded to OpenClaw as gateway thinking-level overrides
 - `reasoning_effort` is mapped onto the same OpenClaw thinking levels
 - Budget and interleaved hints are normalized to the closest OpenClaw level before dispatch
-- OpenAI-style generation controls such as `temperature` and `max_tokens` are not forwarded through `gateway call agent` today
+- Standard OpenAI-style generation controls such as `temperature` and `max_tokens` are forwarded through the OpenClaw Gateway HTTP path
+- Requests with `thinking` overrides currently use the Gateway agent bridge so OpenClaw can apply the requested thinking level
 
 ---
 

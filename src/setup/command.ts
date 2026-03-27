@@ -511,6 +511,44 @@ function ensureGatewayMode(rawConfig: RawConfig): RawConfig {
   } as RawConfig
 }
 
+function ensureGatewayHttpChatCompletionsEnabled(rawConfig: RawConfig): RawConfig {
+  const configRecord = rawConfig as RawConfig & { gateway?: Record<string, unknown> }
+  const currentGateway = configRecord.gateway ?? {}
+  const currentHttp =
+    typeof currentGateway['http'] === 'object' && currentGateway['http'] !== null
+      ? (currentGateway['http'] as Record<string, unknown>)
+      : {}
+  const currentEndpoints =
+    typeof currentHttp['endpoints'] === 'object' && currentHttp['endpoints'] !== null
+      ? (currentHttp['endpoints'] as Record<string, unknown>)
+      : {}
+  const currentChatCompletions =
+    typeof currentEndpoints['chatCompletions'] === 'object' && currentEndpoints['chatCompletions'] !== null
+      ? (currentEndpoints['chatCompletions'] as Record<string, unknown>)
+      : {}
+
+  if (currentChatCompletions['enabled'] === true) {
+    return rawConfig
+  }
+
+  return {
+    ...rawConfig,
+    gateway: {
+      ...currentGateway,
+      http: {
+        ...currentHttp,
+        endpoints: {
+          ...currentEndpoints,
+          chatCompletions: {
+            ...currentChatCompletions,
+            enabled: true,
+          },
+        },
+      },
+    },
+  } as RawConfig
+}
+
 export function applySetupToOpenClawConfig(
   config: RawConfig,
   integration: OpenClawIntegration,
@@ -552,14 +590,16 @@ export function applySetupToOpenClawConfig(
     },
   }
 
-  return ensureGatewayMode({
-    ...config,
-    models: updatedModelsSection,
-    agents: {
-      ...(config.agents ?? {}),
-      defaults: updatedAgentDefaults,
-    },
-  })
+  return ensureGatewayHttpChatCompletionsEnabled(
+    ensureGatewayMode({
+      ...config,
+      models: updatedModelsSection,
+      agents: {
+        ...(config.agents ?? {}),
+        defaults: updatedAgentDefaults,
+      },
+    }),
+  )
 }
 
 function writeOpenClawConfig(path: string, updated: RawConfig): { backupPath?: string } {
